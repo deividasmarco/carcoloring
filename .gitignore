@@ -39,3 +39,9 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# local scratch output (previews, screenshots, exports)
+.scratch/
+
+# copied from node_modules by `npm run setup:web`
+public/canvaskit.wasm
