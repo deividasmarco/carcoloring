@@ -34,4 +34,8 @@ export const blobStore: BlobStore = {
   uriFor() {
     return null;
   },
+  async imageUri(key) {
+    const s = storage()?.getItem(PREFIX + key);
+    return s ? `data:image/png;base64,${s}` : null;
+  },
 };

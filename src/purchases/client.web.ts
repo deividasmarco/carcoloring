@@ -140,7 +140,7 @@ class DevTestStore implements PurchasesClient {
   async getMonthlyOffer(): Promise<MonthlyOffer | null> {
     if (this.offline) throw new PurchasesUnreachableError();
     const priceString = new Intl.NumberFormat(undefined, { style: 'currency', currency: 'EUR' }).format(2.99);
-    return { productId: PREMIUM_MONTHLY_PRODUCT_ID, priceString, ref: 'test-monthly' };
+    return { productId: PREMIUM_MONTHLY_PRODUCT_ID, priceString, period: 'P1M', ref: 'test-monthly' };
   }
 
   async purchase(): Promise<PurchaseOutcome> {

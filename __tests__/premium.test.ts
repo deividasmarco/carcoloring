@@ -47,7 +47,7 @@ class FakeClient implements PurchasesClient {
   }
   async getMonthlyOffer(): Promise<MonthlyOffer | null> {
     if (this.offline) throw new PurchasesUnreachableError();
-    return { productId: 'neon_bay_premium_monthly', priceString: '€2.99', ref: 'pkg' };
+    return { productId: 'neon_bay_premium_monthly', priceString: '€2.99', period: 'P1M', ref: 'pkg' };
   }
   async purchase(): Promise<PurchaseOutcome> {
     this.calls.push('purchase');

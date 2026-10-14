@@ -36,26 +36,30 @@ A car-colouring app for young children, built with Expo SDK 57, React Native, Ty
 
 The names are fictional. The app shows no manufacturer names, badges or logos, and implies no licensing. The source filenames name the real models the drawings depict; they never appear in the app. See `ASSET_MANIFEST.md` for each image's origin and rights status, which is **not established** for most of the collection.
 
-Four screens:
+Screens:
 
-- **Garage:** a swipeable carousel of the vehicles on their turntables, each wearing its own saved paint. Premium vehicles carry a small lock badge.
+- **Garage:** a swipeable carousel of the vehicles on their turntables, each wearing its latest picture's paint. Premium vehicles carry a small lock badge. From here: **All cars** (beside the counter), **My Creations** and **Parents**.
+- **All cars:** every vehicle as a grid of large thumbnails, with All / Free / Bikes filters. Choosing one shows it in the garage.
+- **My Creations:** the child's own pictures, newest first. Tap one to carry on with it, or "Make another" to start a separate blank version of the same vehicle.
 - **Studio:** the vehicle fills the screen, with the tools at the edges.
 - **Finished:** the composed picture, with save, share and back-to-painting.
-- **Parent area:** behind a parental gate. Explains premium and its price, and offers subscribe, restore and manage subscription, plus the privacy and terms links.
+- **Parent area:** behind a parental gate. Leads with the premium offer (the store's price and Subscribe), then restore, terms and privacy, the full collection, settings and the subscription details.
 
-All vehicles and drawings are bundled and stored on the device, and everything except buying premium works offline. There are no accounts, ads, analytics or tracking, and no personal information is asked for. The only network use is the subscription check (RevenueCat and the App Store or Google Play, with an anonymous id).
+All vehicles and drawings are bundled and stored on the device, and everything except buying premium works offline. There are no accounts, no ads and no analytics SDKs, and no personal information is asked for. The only network use is the subscription (RevenueCat and the App Store or Google Play, with an anonymous app user id).
 
 | Garage (a free car, painted) | Studio |
 |---|---|
 | ![Garage](docs/screenshots/garage.jpg) | ![Studio](docs/screenshots/studio-landscape.jpg) |
 | **A premium vehicle, locked** | **Parental gate** |
 | ![Locked premium vehicle](docs/screenshots/garage-locked.jpg) | ![Parental gate](docs/screenshots/parental-gate.jpg) |
-| **Finished (celebration)** | **Studio, portrait** |
-| ![Finished](docs/screenshots/finished.jpg) | <img src="docs/screenshots/studio-portrait.jpg" alt="Studio in portrait" width="220"> |
-| **Parent area** | **Parent area, price and terms** |
-| <img src="docs/screenshots/parent-area.jpg" alt="Parent area" width="220"> | <img src="docs/screenshots/parent-area-price.jpg" alt="Parent area: price and terms" width="220"> |
+| **Parent area (landscape)** | **Finished (celebration)** |
+| ![Parent area, landscape](docs/screenshots/parent-area-wide.jpg) | ![Finished](docs/screenshots/finished.jpg) |
 
-The screenshots come from the web build, a development build, so the parent area shows the test store's banner. Painted cars were scribbled with strokes that deliberately overshoot every part's edges.
+| Garage, portrait | All cars | My Creations | Parent area |
+|---|---|---|---|
+| <img src="docs/screenshots/garage-portrait.jpg" alt="Garage in portrait" width="190"> | <img src="docs/screenshots/all-cars.jpg" alt="All cars" width="190"> | <img src="docs/screenshots/my-creations.jpg" alt="My Creations" width="190"> | <img src="docs/screenshots/parent-area.jpg" alt="Parent area" width="190"> |
+
+The screenshots come from the web build, a development build, so the parent area shows its development-only box (test store, missing legal URLs); customers never see it. Painted cars were scribbled with strokes that deliberately overshoot every part's edges.
 
 ## Run it
 
@@ -95,9 +99,9 @@ npm run previews      # render composition previews to .scratch/
 - **Who decides:** premium is active only while RevenueCat reports the `neon_bay_premium` entitlement as active **and** its signature verified (trusted entitlements: `VERIFIED` or `VERIFIED_ON_DEVICE`). The app stores no premium flag of its own, so nothing saved on the device can unlock anything. The Expo Go preview mode and an unconfigured build never unlock anything.
 - **Enforced twice:** in the garage, and again in the studio route, so a link or an old back-stack entry can't paint a locked vehicle.
 - **A locked vehicle in the garage:** visible, with a small lock badge and a quiet "Locked" button. Tapping it shows one calm line, "Ask a grown-up to unlock it in the parent area.", for a few seconds. It never shows a price, a purchase sheet, a countdown, a flashing prompt or a repeated popup.
-- **When premium ends** (expiry, cancellation, refund or revocation), **nothing is deleted.**
-  - Vehicles with saved paint show "Look at it" and open look-only, with a short note.
-  - Premium vehicles without paint are locked.
+- **When premium ends** (expiry, cancellation, refund or revocation), **nothing is deleted or hidden.**
+  - Every picture stays in My Creations and opens to look at, with a short note; a vehicle with pictures shows "Look at it" in the garage.
+  - Premium vehicles without pictures are locked, and "Make another" on a premium vehicle asks for a grown-up (never a purchase screen).
   - A stroke in progress when premium ends is finished and saved; only new strokes are refused.
   - Undo, redo and wash are disabled while look-only.
   - When premium returns, painting continues on the same picture.
@@ -142,21 +146,21 @@ npm run previews      # render composition previews to .scratch/
 - **Garage → Parents** (top right) opens the gate first. So does every route under `/parents`, including deep links.
 - **The question:** a multiplication of two numbers from four to nine, written **only in words** ("What is seven times eight?"). The two-digit answer is typed on a keypad.
   - Pre-readers can't read it, and a guess has about a 1-in-100 chance.
-  - Each wrong answer brings a new question.
-  - Three wrong answers in a row pause the gate for 30 seconds. The count and the pause survive closing and reopening the gate.
-- **Gate timing:** the gate stays open for 10 minutes or until the parent area is left, whichever comes first, and is kept in memory only.
-- **What checks the gate:** subscribe, restore, manage subscription and the outside links each check the gate at the moment they run.
-- **What the parent area contains:**
-  - what premium unlocks, with thumbnails of all 24 premium vehicles;
-  - the store price;
-  - auto-renewal and cancellation terms, and that nothing is deleted when premium ends;
-  - restore and manage;
-  - the privacy policy and terms of use links (from `app.json` → `extra.legal`; on iOS the terms fall back to Apple's standard EULA);
-  - an obvious **Garage** close button.
+  - Each wrong answer brings a new question; three in a row pause the gate for 30 seconds, also across closing and reopening it.
+- **Gate timing:** open for 10 minutes or until the parent area is left, whichever comes first; kept in memory only. Subscribe, restore, manage subscription and the outside links each check the gate at the moment they run.
+- **For non-subscribers, the first screenful is the offer:**
+  - "Unlock the full garage" and one sentence (counts from the registry);
+  - four tiles: two example colourings, labelled "Example colouring" (rendered by `npm run build:samples`), and two vehicles as they start;
+  - three benefits: the premium cars and superbikes, versions in My Creations, the same tools as the free cars;
+  - the store's localised price and billing period, a large Subscribe button and the renewal disclosure;
+  - Restore purchases, Terms of use and Privacy policy.
 
-  It promises no future additions.
-- **Not configured yet:** the privacy policy and terms URLs are empty, so the parent area shows a "not configured" warning. They must be set before release.
-
+  On wide screens the offer sits beside the previews. Below follow the full premium collection (on request), **Settings** (moving lights and rain, vibration) and the subscription details.
+- **Subscribers** see their status and renewal date, Manage subscription, Restore purchases, settings and the details instead.
+- **Pending approval** (Ask to Buy) replaces the Subscribe button with "Waiting for approval".
+- **No technical messages for customers:** when purchases can't be offered, the screen says "Purchases are unavailable right now. Please try again later." with Try again. Configuration problems (a missing key, missing legal URLs) appear only in a development-only box, and `npm run check:release` fails until they are fixed (EAS runs it before production builds).
+- **Privacy wording** says only what the app does: no ads and no accounts, subscriptions handled by the store and RevenueCat with an anonymous identifier, details in the privacy policy.
+- **Not configured yet:** the privacy policy and terms URLs are empty (a release blocker; see `docs/subscription-setup.md`).
 ## How colour stays inside each part
 
 1. **The drawing defines the parts.** `scripts/build-traced-vehicle.ts` reads each vehicle's line art and treats every enclosed white area as a candidate part. Each vehicle's `src/content/vehicles/<id>/trace.ts` names its parts (`hood`, `front-door`, `windshield`, `fairing`, `front-tire`, `front-wheel`, …). It selects the white areas belonging to each part with a seed point, or with a lasso that claims small areas such as headlight segments or spoke gaps. The build then:
@@ -202,9 +206,11 @@ Every edit is recorded in the vehicle's `trace.ts`, and every part map and lasso
   - A swipe made while the carousel is still settling counts from the vehicle being snapped to.
   - Every snap carries a token, so callbacks from interrupted snaps are ignored.
 - **Buttons:** large previous/next buttons do the same, and are disabled at the ends. Quick repeated taps add up.
-- **Kept in sync:** the name, BAY number, `04 / 27` counter, lock badge and action button all come from the same `GARAGE` entry and the same position. They fade out before the next fades in.
+- **Kept in sync:** the name, BAY number, `04 / 27` counter, lock badge and action button all come from the same `GARAGE` entry and the same position. They fade out before the next fades in. The selection is a permanent vehicle id; positions from the gesture code are checked against the registry (`carouselFlow.ts`).
+- **Names in full:** every name is sized from Michroma's real glyph widths to the room it has, two balanced lines for the longest on narrow screens, never truncated.
+- **Finding a vehicle:** the counter is the **All cars** button (a grid of every vehicle with All / Free / Bikes filters); **My Creations** sits below the paint button in portrait and in the top bar in landscape.
 - **Actions:**
-  - START PAINTING or KEEP PAINTING for a free or unlocked vehicle;
+  - START PAINTING or KEEP PAINTING for a free or unlocked vehicle (Keep painting opens its most recently edited picture; other versions are in My Creations);
   - LOOK AT IT for a locked vehicle with saved paint;
   - LOCKED otherwise;
   - ONE MOMENT while the store's first answer is pending.
@@ -214,16 +220,14 @@ Every edit is recorded in the vehicle's `trace.ts`, and every part map and lasso
 
 ## Saving
 
-Each vehicle saves independently under `drawings/<vehicleId>/v<assetVersion>/`, keyed by its permanent id, never by position:
+Every picture is a **creation** with a permanent id, so a child can make several versions of the same vehicle without overwriting any:
 
-- strokes and the redo stack as JSON;
-- the flattened base as PNG;
-- the garage preview.
+- `creations/<id>/` holds its strokes and redo stack (JSON), the flattened base (PNG), the paint layer for the garage, and a small composed picture for My Creations (lists show these images, never live drawing canvases);
+- `creations/index.json` lists each creation's vehicle id, artwork version and created / last-edited times.
 
-Saves happen 0.7 s after each change, when the app goes to the background, and when leaving the studio. Washing or deleting one vehicle never touches another. Losing premium never deletes or hides a save.
+Saves happen 0.7 s after each change, when the app goes to the background, and when leaving the studio. Files are written atomically on iOS and Android, and a new picture is listed before its first files are written, so an interrupted save never hides saved strokes. Deleting needs a confirmation in My Creations; nothing else deletes artwork.
 
-The Apex GT's drawing from before versioned keys is moved into its `v1` folder on first load. It is copied first, and the old files are removed only after the new state is written. Concurrent readers share one migration, so it runs once. A save for another asset version is ignored rather than misplaced. Bump `assetVersion` in a vehicle's `trace.ts` whenever its parts change. If an id ever has to change, add a migration like the Apex GT's (`migrateLegacyDrawing` in `src/engine/persistence/drawingStore.ts`). Never reuse an id.
-
+**Migration:** the earlier one-drawing-per-vehicle saves (`drawings/<vehicleId>/v<assetVersion>/`, and the Apex GT's pre-version `drawings/apex-gt/`) are copied into creations once at startup and left in place. The index remembers what was copied, so running it again adds nothing, an interrupted run simply copies again, and a deleted picture never comes back. Bump `assetVersion` in a vehicle's `trace.ts` whenever its parts change; pictures painted on the older parts are then not opened on the new ones.
 ## Drawing feel
 
 - **Tools:** wax crayon with paper grain that fills in as layers build up; smoother coloured pencil; eraser; three sizes; a 12-colour crayon box.
@@ -263,10 +267,11 @@ src/content/
   scenes/neon-garage/       procedural background, ambient effects, vehicle stage
 assets/source/              line-art source images (+ provenance notes)
 src/engine/                 framework-agnostic drawing engine
-src/features/               garage carousel, studio, finished screen, parent area and gate
+src/features/               garage carousel, All cars, My Creations, studio, finished screen, parent area and gate
 src/purchases/              RevenueCat client (native), test store (web development), entitlement rule
-src/state/                  settings, premium and parental-gate state, paint previews, drawing keys
-src/ui/                     theme tokens, icons, crayon rack, buttons
+src/state/                  settings, creations, premium and parental-gate state, paint previews, garage selection
+src/config/                 legal links and release configuration
+src/ui/                     theme tokens, name fitting, icons, crayon rack, buttons, screen header
 scripts/                    traced-vehicle build, trace atlas, previews, app icons
 __tests__/                  unit, pixel and integration tests
 e2e/                        browser end-to-end checks (Playwright) and shared helpers
@@ -288,59 +293,30 @@ Ids and region ids are persisted in saved drawings, so never rename them.
 
 **Verified here.** On Windows, with no Android SDK, no simulator and no iOS tooling:
 
-- **Jest: 1294 tests in 14 suites**, rendering real pixels with Skia's CanvasKit build and every real vehicle asset.
-  - **Clipping, every part of every vehicle (946 parts across 27 vehicles):** a thick crayon zig-zag overshooting the part by 40 units on every side never exceeds the part's anti-aliased mask, never reaches another part's interior, and leaves no visible colour off its own paper.
-  - **Wheels and eraser:** tyre and wheel strokes stay put, and the eraser obeys the same boundaries. With every part over-scribbled, no visible paint lands outside the vehicle.
-  - **Each vehicle:** the hit map and the vector paths agree, the vehicle stands centred on the shared ground line, a save and restart restores pixel-for-pixel, and the export shows the paint.
-  - **Premium rules** (scripted client):
-    - only verified, active entitlements unlock;
-    - offline and failed refreshes keep the last status;
-    - expiry is noticed at the end of the period;
-    - refund, cancel, pending approval and restore are handled;
-    - every action needs the open gate;
-    - Expo Go preview, unconfigured and untrusted clients never unlock.
-  - **Look-only mode:** it never deletes paint, and lets an active stroke finish.
-  - **Gate:** a words-only question, its timing, and a pause that survives reopening. Secret keys are refused.
-  - **Registry:**
-    - three free vehicles first;
-    - tier decided by id, unchanged when the list is reversed;
-    - unique ids, artwork, masks and thumbnails;
-    - saves and the remembered selection keyed by id.
-  - **Swipe release rule.**
-- **Browser end-to-end, 707 checks** (studio 52, garage 544, premium 111) on Expo web in headless Chromium with real mouse input:
-  - **Lineup:** 27 vehicles in order. Exactly the three free vehicles open without premium; every other vehicle shows the lock badge and LOCKED.
-  - **Locked vehicles:** tapping one shows only the calm line (fully on screen), never a price, purchase sheet, gate or dialog. A direct link to a locked vehicle's studio returns to the garage.
-  - **Carousel, every vehicle in both directions** (arrows forwards, swipes back): name, bay, counter, lock badge and button all match, and only the vehicle and its neighbours are mounted. The pictures after swiping back are pixel-identical to arriving forwards.
-  - **Carousel, more:** mid-swipe gaps; 4 and 12 quick arrow taps; 2 × 8 rapid swipes; reduced motion for all 27, including a drag that never shows two vehicles.
-  - **Every vehicle's studio:** each opens its own studio. For each vehicle except the Apex GT (covered by the 52 studio checks), a stroke across into the neighbouring panel never paints it, a stroke from the tyre across the wheel stays on the tyre, undo/redo works, and the vehicle fits clear of the controls. Every vehicle also fits the studio in portrait.
-  - **Restart:** the selection, premium (from the store) and all 26 painted vehicles return.
-  - **Washing and migration:** washing one vehicle leaves the others painted. The Apex GT's pre-version save migrates.
-  - **Sizes:** at seven phone and tablet sizes, every control is ≥ 44 pt with no overlaps, and every vehicle is on screen, fills at least 40% of it, and has none of its drawing under a control or label (measured on the vehicles' own pixels). The gate and the parent area are checked at five sizes.
-  - **Parent area and gate:**
-    - the gate guards both the Parents button and direct links;
-    - a wrong answer gives a new question, and three pause the gate (reopening doesn't skip the pause);
-    - the parent area shows the store's price, renewal and cancellation terms, every premium vehicle and no promises;
-    - leaving closes the gate.
-  - **Test-store purchase outcomes** (cancel, failed, pending → approved, success):
-    - the messages;
-    - the status card;
-    - the garage unlocking live, without a restart.
-  - **Restore:** nothing to restore, and a subscription bought elsewhere.
-  - **Offline:** a restart keeps the subscriber (device cache), a failed refresh keeps premium (marked stale), and a first launch offline keeps premium locked while the free vehicles work.
-  - **Expiry at the end of the period:** painted vehicles open look-only with their paint intact, unpainted ones are locked, and direct links are enforced.
-  - **Expiry in the middle of a stroke:** the stroke finishes, is saved and survives a restart; later strokes are refused.
-  - **Refund while painting:** locks at once and keeps every stroke.
+- **Jest: 1319 tests in 18 suites**, rendering real pixels with Skia's CanvasKit build and every real vehicle asset.
+  - **Clipping, every part of every vehicle (946 parts across 27 vehicles):** a thick crayon zig-zag overshooting the part by 40 units on every side never exceeds the part's anti-aliased mask, never reaches another part's interior, and leaves no visible colour off its own paper. The eraser obeys the same boundaries, and with every part over-scribbled no visible paint lands outside the vehicle.
+  - **Each vehicle:** the hit map and the vector paths agree, a save and restart restores pixel-for-pixel, and the export shows the paint.
+  - **Creations and migration:** older saves (pre-version and versioned) become creations with the originals kept; empty saves are skipped; re-running adds nothing; a deleted creation never comes back; an interrupted migration finishes; an unreadable list is kept, not overwritten; several pictures of one vehicle save and load separately.
+  - **Premium rules, gate and look-only mode;** the swipe release rule; the carousel selection by id (invalid positions are refused); Skia objects released safely on native and web; names fitted in full at every layout width.
+- **Browser end-to-end, 747 checks** (studio 52, garage 541, premium 114, creations 40) on Expo web in headless Chromium with real mouse input:
+  - **Garage:** all 27 vehicles in both directions with matching name, bay, counter, lock badge and button; pixel-identical pictures after swiping back; rapid swipes and arrow taps; reduced motion; every vehicle opens its own studio and keeps its parts apart; restart; seven phone and tablet sizes with every control ≥ 44 pt, no overlaps, and none of any vehicle's drawing under a control or label.
+  - **All cars:** every vehicle in order, free first, lock badges, the selected vehicle marked, the All / Free / Bikes filters, choosing a locked vehicle shows it locked in the garage with no purchase screen or dialog.
+  - **My Creations:** the empty state, two pictures of one vehicle with their own ids, Make another starts a blank picture and keeps the first, Keep painting opens the latest, the gallery shows each saved picture newest first and opens the right one, deleting needs a confirmation ("Keep it" keeps it), backgrounding saves at once, pictures survive a restart, older saves move in once with their paint, and after premium ends the pictures stay and open to look at.
+  - **Parent area and purchases:** the gate on every entrance; the offer first (price before the collection), example colourings labelled, counts from the registry, renewal disclosure; no technical messages outside the development-only box; cancel, failure, pending → approval, success, restore, offline, expiry (also mid-stroke) and refund.
   - **No page errors** in any suite.
-- **Native bundling:** `npx expo export` builds the iOS and Android Hermes bundles (16.5 MB each, with all 27 vehicles). They contain the RevenueCat client and none of the web test store or other web-only code. `expo install --check` and `expo-doctor` (21/21) are clean, and typecheck and lint are clean.
-- **Visual review:** every new vehicle's part map and lasso audit over its drawing, the garage, studio, gate and parent area screenshots, and the README screenshots regenerated from the web build.
+- **Native bundling:** `npx expo export` builds the iOS and Android Hermes bundles (17 MB each) with the creations store and the new font, and none of the web test store or other web-only code. `expo install --check` and `expo-doctor` (21/21) are clean, typecheck and lint are clean, and `npm run check:release` reports exactly the four missing release settings.
+- **Visual review:** the garage, All cars, My Creations, gate, parent area and studio at phone and tablet sizes in both orientations.
 
 **Not verified:**
 
-- **Real billing.** No App Store Connect or RevenueCat project is connected, and no purchase, restore, renewal, Ask to Buy, expiry or refund has run against a real store. The web test store and Expo Go's preview mode check only the app's own handling. See `docs/subscription-setup.md` for the device test plan.
-- **No real device or simulator:** touch feel, carousel frame rate, start-up time and memory with 27 vehicles on low-end phones, and Android back behaviour are all untested.
+- **Real billing.** No App Store Connect or RevenueCat project is connected, and no purchase, restore, renewal, Ask to Buy, expiry or refund has run against a real store. See `docs/subscription-setup.md` for the device test plan.
+- **No real device or simulator:** touch feel, carousel frame rate, start-up time and memory with 27 vehicles on low-end phones, larger system text sizes (names are fitted for them but not seen), safe areas on notched phones, and Android back behaviour are all untested.
 - Apple Pencil / Android stylus pressure, Save to Photos, the share sheet and haptics on device.
 
 ## Known limitations
+
+- **The floating gear in development:** Expo Go and development builds draw Expo's own developer-tools button over every screen. It is not part of the app and is absent from release builds.
+- **Crayon texture:** the paper grain was not changed. It should be judged on a real phone first, and changing it would alter how existing saved pictures render (strokes are re-drawn from their data).
 
 - **Parts follow the drawings.** Where the artist drew no line between surfaces, they form one part (listed above). Beside a very thin line, an anti-aliased edge can tint a single pixel by a few percent.
 - Very long scribbles become several undo steps, one per 1500 samples.

@@ -23,7 +23,9 @@ export function usePremiumLifecycle() {
     void s.start();
     let last = Date.now();
     const sub = AppState.addEventListener('change', (st) => {
-      if (st !== 'active' || Date.now() - last < 30_000) return;
+      if (st !== 'active') return;
+      // Throttled, except straight after the parent opened subscription management.
+      if (!s.takeRefreshRequest() && Date.now() - last < 30_000) return;
       last = Date.now();
       void s.refresh();
     });

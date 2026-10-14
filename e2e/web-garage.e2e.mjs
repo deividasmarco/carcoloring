@@ -159,7 +159,8 @@ const restShots = [];
     const { slideW } = await page.evaluate(() => globalThis.__neonBayGarage.stage());
     const shot = await carsOnly(page, -4);
     const xc = box.width + 16 + 12 - pos * slideW;
-    const gap = emptyGaps(shot).find((g) => g.x1 - g.x0 >= 12 && g.x0 <= xc && xc <= g.x1);
+    // Early in a swipe the incoming vehicle may not be on screen yet: the empty run then reaches the edge.
+    const gap = emptyGaps(shot, { edges: true }).find((g) => g.x1 - g.x0 >= 12 && g.x0 <= xc && xc <= g.x1);
     check(`mid-swipe at ${pos.toFixed(2)}: an empty gap separates the outgoing and incoming vehicles`, !!gap, gap ? `columns ${gap.x0}–${gap.x1}` : `no empty columns around x=${xc.toFixed(0)}`);
     if (frac === 0.5) await page.screenshot({ path: `${SHOTS}/mid-swipe.png` });
     await page.mouse.move(x0, y, { steps: 4 });
@@ -325,35 +326,10 @@ check('washed vehicle reads START PAINTING again', (await action())?.kind === 's
 await goTo(3);
 check('the next vehicle still has its paint', (await action())?.kind === 'keep');
 
-// ── E. Apex GT art saved by the first app version is migrated ───────────────
-await goTo(0);
-await page.getByLabel('Start painting the Apex GT').click();
-await S.waitForStudio('apex-gt');
-const door = (await S.samples('door', 1, 20))[0];
-await S.mouseStroke([door, { x: door.x + 60, y: door.y + 5 }]);
-await page.waitForTimeout(1200);
-await backToGarage();
-const moved = await page.evaluate(() => {
-  const P = 'neon-bay/drawings/apex-gt/';
-  let n = 0;
-  for (const f of ['state.json', 'base.png', 'thumb.png']) {
-    const v = localStorage.getItem(`${P}v1/${f}`);
-    if (v === null) continue;
-    localStorage.setItem(P + f, f === 'state.json' ? JSON.stringify({ ...JSON.parse(v), assetVersion: undefined }) : v);
-    localStorage.removeItem(`${P}v1/${f}`);
-    n++;
-  }
-  return n;
-});
-await openGarage();
-await goTo(0);
-check('legacy Apex GT save is found after the upgrade', moved >= 2 && (await action())?.kind === 'keep', `${moved} files moved to legacy keys`);
-await page.getByLabel('Keep painting the Apex GT').click();
-await S.waitForStudio('apex-gt');
-check('legacy Apex GT art is restored in the studio', (await S.alphaAt(door)) > 0);
-check('legacy files were moved into the versioned folder', await page.evaluate(() => !!localStorage.getItem('neon-bay/drawings/apex-gt/v1/state.json') && !localStorage.getItem('neon-bay/drawings/apex-gt/state.json')));
-
 // ── F. Sizes: controls ≥ 44 pt, nothing overlapping, every vehicle clear ────
+await goTo(0);
+await page.getByLabel(/^(Start|Keep) painting the Apex GT$/).click();
+await S.waitForStudio('apex-gt');
 const SIZES = [
   [844, 390, 'phone landscape'],
   [390, 844, 'phone portrait'],

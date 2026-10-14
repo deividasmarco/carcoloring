@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "main": "index.ts",
   "dependencies": {
+    "@expo-google-fonts/atkinson-hyperlegible-next": "^0.4.1",
     "@expo-google-fonts/chakra-petch": "^0.4.1",
     "@expo-google-fonts/michroma": "^0.4.2",
     "@shopify/react-native-skia": "2.6.2",
@@ -56,8 +57,12 @@
     "previews": "jest --testMatch \"**/scripts/previews/*.preview.ts\"",
     "setup:web": "setup-skia-web public",
     "lint": "expo lint",
-    "e2e:web": "node e2e/web-studio.e2e.mjs && node e2e/web-garage.e2e.mjs && node e2e/web-premium.e2e.mjs",
-    "trace:atlas": "tsx scripts/trace-atlas.ts"
+    "e2e:web": "node e2e/web-studio.e2e.mjs && node e2e/web-garage.e2e.mjs && node e2e/web-premium.e2e.mjs && node e2e/web-creations.e2e.mjs",
+    "trace:atlas": "tsx scripts/trace-atlas.ts",
+    "check:release": "node scripts/check-release.mjs",
+    "eas-build-pre-install": "node scripts/check-release.mjs",
+    "build:samples": "tsx scripts/sample-previews.ts",
+    "font-metrics": "node scripts/font-metrics.mjs"
   },
   "private": true,
   "allowScripts": {

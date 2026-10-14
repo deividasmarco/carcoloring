@@ -98,8 +98,11 @@ export function shotDiff(a, b) {
   return n / (a.w * a.h);
 }
 
-/** Columns containing anything but the plain backdrop; returns the runs of empty columns between drawn ones. */
-export function emptyGaps(s) {
+/**
+ * Columns containing anything but the plain backdrop; returns the runs of empty
+ * columns between drawn ones (with `edges`, also runs reaching the left or right edge).
+ */
+export function emptyGaps(s, { edges = false } = {}) {
   const bgc = [s.px[0], s.px[1], s.px[2]];
   const drawn = [];
   for (let x = 0; x < s.w; x++) {
@@ -118,7 +121,7 @@ export function emptyGaps(s) {
     }
     const x0 = x;
     while (x < s.w && !drawn[x]) x++;
-    if (x0 > 0 && x < s.w) gaps.push({ x0, x1: x });
+    if (edges || (x0 > 0 && x < s.w)) gaps.push({ x0, x1: x });
   }
   return gaps;
 }
@@ -176,7 +179,8 @@ export function garageKit(page, base, { check }) {
     await p.waitForTimeout(1200);
   }
   async function backToGarage(p = page) {
-    await p.getByLabel('Back to the garage').click();
+    // Screens further down the stack keep their own (hidden) back buttons: use the top one.
+    await p.getByLabel('Back to the garage').last().click();
     await p.waitForFunction(() => !!globalThis.__neonBayGarage, null, { timeout: 60000 });
     await p.waitForTimeout(600);
   }
@@ -236,7 +240,7 @@ export function garageKit(page, base, { check }) {
         return {
           texts,
           buttons: [...document.querySelectorAll('[role="button"]')].map((el) => el.getAttribute('aria-label') ?? ''),
-          counterLabel: [...document.querySelectorAll('[aria-label]')].map((el) => el.getAttribute('aria-label')).find((l) => /^Car \d+ of \d+$/.test(l)) ?? null,
+          counterLabel: [...document.querySelectorAll('[aria-label]')].map((el) => el.getAttribute('aria-label')).find((l) => /^All cars\. Car \d+ of \d+$/.test(l)) ?? null,
           mounted: globalThis.__neonBayGarage.mounted(),
         };
       })
@@ -262,7 +266,7 @@ export function garageKit(page, base, { check }) {
     const problems = [];
     if (s.texts.filter((t) => VEHICLES.some((v) => v[1].toUpperCase() === t)).join() !== name.toUpperCase()) problems.push('name');
     if (!one(s.bay, `BAY ${pad2(i + 1)}`)) problems.push('bay');
-    if (!one(s.counter, pad2(i + 1)) || s.counterLabel !== `Car ${i + 1} of ${VEHICLES.length}`) problems.push('counter');
+    if (!one(s.counter, pad2(i + 1)) || s.counterLabel !== `All cars. Car ${i + 1} of ${VEHICLES.length}`) problems.push('counter');
     if (!act || act.name !== name) problems.push('button');
     if (kinds && (!act || !kinds.includes(act.kind))) problems.push(`button kind ${act?.kind}`);
     if (isFree(id) && lockedShown) problems.push('free vehicle shown locked');
@@ -277,20 +281,32 @@ export function garageKit(page, base, { check }) {
     return ok;
   }
   /**
-   * Screenshot of the car area (top of the stage to the floor + `below`) with
-   * the garage background canvas hidden, so only the cars' canvas (and any
-   * controls over it) remain on the plain backdrop. Decoded to RGBA.
+   * Screenshot of the car area (top of the stage to the floor + `below`)
+   * showing only the cars' canvas: the garage background and every control
+   * or label are hidden, so the picture is the vehicles alone on the plain
+   * backdrop. Decoded to RGBA.
    */
   async function carsOnly(p = page, below = 20) {
     const st = await p.evaluate(() => globalThis.__neonBayGarage.stage());
-    const bg = (v) => p.evaluate((vis) => (document.querySelectorAll('[data-testid="garage-carousel"] canvas')[0].style.visibility = vis), v);
-    await bg('hidden');
+    await p.evaluate(() => {
+      const cars = document.querySelectorAll('[data-testid="garage-carousel"] canvas')[1];
+      const keep = new Set();
+      for (let e = cars; e; e = e.parentElement) keep.add(e);
+      globalThis.__carsOnlyHidden = [];
+      for (const el of document.body.querySelectorAll('*')) {
+        if (keep.has(el)) continue;
+        globalThis.__carsOnlyHidden.push([el, el.style.visibility]);
+        el.style.visibility = 'hidden';
+      }
+    });
     await p.waitForTimeout(120);
     const vp = p.viewportSize();
     const top = Math.max(0, Math.floor(st.top - 6));
     const bottom = Math.min(vp.height, Math.ceil(st.ground + below));
     const buf = await p.screenshot({ clip: { x: 0, y: top, width: vp.width, height: bottom - top } });
-    await bg('');
+    await p.evaluate(() => {
+      for (const [el, v] of globalThis.__carsOnlyHidden) el.style.visibility = v;
+    });
     return decode(buf);
   }
   return { garage, openGarage, backToGarage, settle, swipe, goTo, action, restState, expectShown, carsOnly };

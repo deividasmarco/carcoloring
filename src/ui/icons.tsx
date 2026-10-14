@@ -24,7 +24,11 @@ export type IconName =
   | 'lock'
   | 'eye'
   | 'parent'
-  | 'back';
+  | 'back'
+  | 'grid'
+  | 'gallery'
+  | 'plus'
+  | 'trash';
 
 interface Props {
   name: IconName;
@@ -177,6 +181,33 @@ function render(name: IconName, c: string, a: string) {
       );
     case 'back':
       return <Path d="M14 7 L5 16 L14 25 M5.5 16 H27" strokeWidth={3} />;
+    case 'grid':
+      return (
+        <>
+          <Rect x={5} y={5} width={9} height={9} rx={2} />
+          <Rect x={18} y={5} width={9} height={9} rx={2} />
+          <Rect x={5} y={18} width={9} height={9} rx={2} />
+          <Rect x={18} y={18} width={9} height={9} rx={2} />
+        </>
+      );
+    case 'gallery':
+      return (
+        <>
+          <Rect x={4} y={7} width={24} height={18} rx={3} />
+          <Path d="M4 21 L11 15 L17 20 L21 17 L28 22" />
+          <Circle cx={21} cy={12} r={2} stroke={a} />
+        </>
+      );
+    case 'plus':
+      return <Path d="M16 7 V25 M7 16 H25" />;
+    case 'trash':
+      return (
+        <>
+          <Path d="M6 9 H26 M13 9 V6.5 C13 5.7 13.7 5 14.5 5 H17.5 C18.3 5 19 5.7 19 6.5 V9" />
+          <Path d="M8.5 9 L10 25.5 C10.1 26.3 10.8 27 11.6 27 H20.4 C21.2 27 21.9 26.3 22 25.5 L23.5 9" />
+          <Path d="M14 14 V22 M18 14 V22" />
+        </>
+      );
     case 'fit':
       return (
         <>

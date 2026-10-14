@@ -42,7 +42,7 @@ import Animated, {
   type SharedValue,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Canvas, Group, Image, Oval, Picture, type SkPicture } from '@shopify/react-native-skia';
+import { Canvas, Group, Image, LinearGradient, Oval, Picture, Rect, vec, type SkPicture } from '@shopify/react-native-skia';
 import { GARAGE, garageIndexOf, type GarageEntry } from '../../content/registry';
 import { drawGarageBackground, drawTurntable } from '../../content/scenes/neon-garage/background';
 import { GarageAmbience } from '../../content/scenes/neon-garage/effects';
@@ -50,12 +50,14 @@ import { SCENE_LAYOUT } from '../../content/scenes/neon-garage/layout';
 import { recordPicture } from '../../engine/render/picture';
 import { installGarageProbe } from '../../dev/webProbe';
 import { getVehicleRuntime } from '../../engine/vehicle/vehicleRuntime';
-import { drawingKeyOf } from '../../state/drawingKey';
+import { keyOfCreation, latestCreation, useCreations, useLatestCreation, type CreationMeta } from '../../state/creations';
+import { onGarageSelectionRequest, takeGarageSelection } from '../../state/garageSelection';
 import { preloadPaintPreview, usePaintPreview } from '../../state/paintPreview';
 import { accessOf, canPaint, premiumStore, usePremium } from '../../state/premium';
 import { setSettings, useReduceMotion, useSettings, useSettingsReady } from '../../state/settings';
 import { tick } from '../../ui/haptics';
 import { Icon } from '../../ui/icons';
+import { fitVehicleName } from '../../ui/fitName';
 import { colors, fonts } from '../../ui/theme';
 import { createCarouselFlow, type NavEvents, type Range } from './carouselFlow';
 import { swipeRelease } from './swipeRelease';
@@ -232,19 +234,22 @@ function reportBadRelease(start: number, dir: number) {
   console.error(`[garage] a swipe from position ${start} by ${dir} gave no valid vehicle; it springs back instead`);
 }
 
-function openStudio(router: ReturnType<typeof useRouter>, entry: GarageEntry, drag: SharedValue<DragState>) {
+/** Opens the vehicle's latest creation (Keep painting, or a blank one again), or a new picture. */
+function openStudio(router: ReturnType<typeof useRouter>, entry: GarageEntry, latest: CreationMeta | null, drag: SharedValue<DragState>) {
   const d = drag.value;
   if (d.active || Date.now() - d.endedAt < 300) return;
   tick();
   setSettings({ lastVehicle: entry.vehicle.id });
-  router.push({ pathname: '/studio/[vehicleId]', params: { vehicleId: entry.vehicle.id } });
+  const vehicleId = entry.vehicle.id;
+  router.push({ pathname: '/studio/[vehicleId]', params: latest ? { vehicleId, creation: latest.id } : { vehicleId, new: '1' } });
 }
 
 // ── One car on its turntable ────────────────────────────────────────────────
 
 function CarSlide({ entry, index, position, frame, reduce }: { entry: GarageEntry; index: number; position: SharedValue<number>; frame: SlideFrame; reduce: boolean }) {
   const rt = useMemo(() => getVehicleRuntime(entry.vehicle), [entry.vehicle]);
-  const preview = usePaintPreview(drawingKeyOf(entry.vehicle));
+  const { creation } = useLatestCreation(entry.vehicle.id);
+  const preview = usePaintPreview(creation ? keyOfCreation(creation) : null);
   const p = rt.placement;
   const rect = rt.layout.paintRect;
   const u = SCENE_LAYOUT.underglow;
@@ -303,7 +308,20 @@ function labelOpacity(d: number) {
   return clamp(1 - Math.abs(d) * 2.2, 0, 1);
 }
 
-function SlidingLabel({ index, position, reduce, children }: { index: number; position: SharedValue<number>; reduce: boolean; children: React.ReactNode }) {
+function SlidingLabel({
+  index,
+  position,
+  reduce,
+  align,
+  children,
+}: {
+  index: number;
+  position: SharedValue<number>;
+  reduce: boolean;
+  /** Where the label sits in the plate: at its bottom (landscape) or centred (portrait). */
+  align: 'end' | 'center';
+  children: React.ReactNode;
+}) {
   const style = useAnimatedStyle(() => {
     const d = index - position.value;
     return {
@@ -312,9 +330,27 @@ function SlidingLabel({ index, position, reduce, children }: { index: number; po
     };
   });
   return (
-    <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, style]}>
+    <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { justifyContent: align === 'end' ? 'flex-end' : 'center' }, style]}>
       {children}
     </Animated.View>
+  );
+}
+
+/** A vehicle name in full: one line when it fits, otherwise two balanced lines. */
+function VehicleName({ name, width, center }: { name: string; width: number; center: boolean }) {
+  // The system text size scales the result: fit to the room it will have after scaling.
+  const { fontScale } = useWindowDimensions();
+  const fit = fitVehicleName(name, width / Math.max(1, fontScale), { max: 30, minOneLine: 20, minTwoLines: 16 });
+  return (
+    <Text
+      style={[styles.name, { fontSize: fit.fontSize, letterSpacing: fit.letterSpacing, lineHeight: fit.lineHeight }, center && styles.center]}
+      numberOfLines={fit.lines.length}
+      // Last resort if a platform renders wider than the font metrics say: shrink, never cut off.
+      adjustsFontSizeToFit
+      minimumFontScale={0.85}
+    >
+      {fit.lines.join('\n')}
+    </Text>
   );
 }
 
@@ -327,16 +363,41 @@ function RollingNumber({ index, position, reduce }: { index: number; position: S
 }
 
 /** "02 / 07" with the current number rolling as the position changes. */
-function Counter({ position, reduce, selected, indices }: { position: SharedValue<number>; reduce: boolean; selected: number; indices: number[] }) {
+/** "04 / 27" with the current number rolling as the position changes; opens the All cars grid. */
+function AllCarsButton({
+  position,
+  reduce,
+  selected,
+  indices,
+  onPress,
+}: {
+  position: SharedValue<number>;
+  reduce: boolean;
+  selected: number;
+  indices: number[];
+  onPress: () => void;
+}) {
   return (
-    <View style={styles.counter} accessible accessibilityLabel={`Car ${selected + 1} of ${COUNT}`}>
-      <View style={styles.counterNowBox}>
-        {indices.map((i) => (
-          <RollingNumber key={GARAGE[i].vehicle.id} index={i} position={position} reduce={reduce} />
-        ))}
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`All cars. Car ${selected + 1} of ${COUNT}`}
+      onPress={onPress}
+      hitSlop={4}
+      style={({ pressed }) => [styles.allCars, pressed && styles.pressed]}
+    >
+      <Icon name="grid" size={20} color={colors.cyan} />
+      <View>
+        <Text style={styles.allCarsCaption}>ALL CARS</Text>
+        <View style={styles.counter}>
+          <View style={styles.counterNowBox}>
+            {indices.map((i) => (
+              <RollingNumber key={GARAGE[i].vehicle.id} index={i} position={position} reduce={reduce} />
+            ))}
+          </View>
+          <Text style={styles.counterTotal}> / {pad2(COUNT)}</Text>
+        </View>
       </View>
-      <Text style={styles.counterTotal}> / {pad2(COUNT)}</Text>
-    </View>
+    </Pressable>
   );
 }
 
@@ -434,10 +495,25 @@ export function GarageScreen() {
     return () => installGarageProbe(null);
   }, [position, drag]);
 
-  // Preload previews around the selection; warm the remaining cars when idle.
+  // A vehicle picked in All cars or My Creations.
   useEffect(() => {
-    for (let i = selected - 1; i <= selected + 1; i++) if (i >= 0 && i < COUNT) preloadPaintPreview(drawingKeyOf(GARAGE[i].vehicle));
-  }, [selected]);
+    const apply = () => {
+      const id = takeGarageSelection();
+      if (id && flow.select(id)) setSettings({ lastVehicle: id });
+    };
+    apply();
+    return onGarageSelectionRequest(apply);
+  }, [flow]);
+
+  // Preload previews around the selection; warm the remaining cars when idle.
+  const creations = useCreations();
+  useEffect(() => {
+    if (!creations.ready) return;
+    for (let i = selected - 1; i <= selected + 1; i++) {
+      const latest = i >= 0 && i < COUNT ? latestCreation(GARAGE[i].vehicle.id) : null;
+      if (latest) preloadPaintPreview(keyOfCreation(latest));
+    }
+  }, [selected, creations]);
   useEffect(() => {
     let i = 0;
     let timer: ReturnType<typeof setTimeout>;
@@ -457,7 +533,8 @@ export function GarageScreen() {
     let groundY: number;
     if (landscape) {
       const side = 64 + Math.max(insets.left, insets.right);
-      const top = insets.top + 44;
+      // Below the header row (All cars, My Creations, Parents: 48 high at top + 8), so no vehicle sits under it.
+      const top = insets.top + 64;
       const bottom = insets.bottom + 84;
       const scale = Math.min((width - side * 2) / CAR_BOX.width, (height - top - bottom) / (CAR_BOX.height + FLOOR_BELOW));
       view = { scale, tx: width / 2 - STAGE.centerX * scale, ty: top - CAR_BOX.y * scale };
@@ -465,7 +542,7 @@ export function GarageScreen() {
     } else {
       const scale = (width - 32) / CAR_BOX.width;
       const carH = CAR_BOX.height * scale;
-      const group = carH + 24 + 84 + 16 + 56 + 24 + 64;
+      const group = carH + 24 + 84 + 16 + 56 + 16 + 64 + 16 + 48;
       const carTop = insets.top + Math.max(64, (height - insets.top - insets.bottom - group) / 2);
       view = { scale, tx: width / 2 - STAGE.centerX * scale, ty: carTop - CAR_BOX.y * scale };
       groundY = carTop + carH;
@@ -493,18 +570,18 @@ export function GarageScreen() {
   }, [layout, reduce]);
 
   const entry = GARAGE[selected];
-  const preview = usePaintPreview(drawingKeyOf(entry.vehicle));
+  const latest = creations.ready ? latestCreation(entry.vehicle.id) : null;
   const premium = usePremium();
   const entitled = premiumStore().isEntitled();
   const access = accessOf(entry.vehicle.id, premium, entitled);
   const paintable = canPaint(access);
-  const viewOnly = access === 'locked' && preview.hasPaint;
+  const viewOnly = access === 'locked' && !!latest;
   const isLocked = (i: number) => accessOf(GARAGE[i].vehicle.id, premium, entitled) === 'locked';
   // Vehicle whose "ask a grown-up" line is showing (cleared by moving on).
   const [hintFor, setHintFor] = useState<string | null>(null);
   const hintTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const showHint = hintFor === entry.vehicle.id;
-  const open = () => openStudio(router, entry, drag);
+  const open = () => openStudio(router, entry, latest, drag);
   const askGrownUp = () => {
     tick();
     setHintFor(entry.vehicle.id);
@@ -518,7 +595,7 @@ export function GarageScreen() {
     [],
   );
   const action =
-    access === 'checking' ? 'One moment' : paintable ? (preview.hasPaint ? 'Keep painting' : 'Start painting') : viewOnly ? 'Look at it' : 'Locked';
+    access === 'checking' ? 'One moment' : paintable ? (latest?.hasPaint ? 'Keep painting' : 'Start painting') : viewOnly ? 'Look at it' : 'Locked';
   const actionLabel = paintable
     ? `${action} the ${entry.vehicle.name}`
     : viewOnly
@@ -527,17 +604,16 @@ export function GarageScreen() {
         ? `Checking the ${entry.vehicle.name}`
         : `The ${entry.vehicle.name} is locked. A grown-up can unlock it in the parent area.`;
 
-  // Michroma is wide: size each name to the room it has instead of truncating.
+  // Every name in full: sized from Michroma's own metrics to the room it has
+  // (two balanced lines for the longest names on narrow screens), never truncated.
   // Landscape puts the counter top-right, so the name has the room beside the button.
   const plateW = landscape ? Math.min(420, width - insets.left - insets.right - 44 - 250 - 24) : width - 40;
-  // Michroma advances ≈0.95 em per capital, plus 3 pt letter spacing.
-  const nameSize = (name: string) => Math.max(14, Math.min(30, Math.floor((plateW / name.length - 3) / 0.95)));
   const nameplate = (
     <View style={[styles.plate, landscape ? { width: plateW } : styles.platePortrait]}>
       {indices.map((i) => {
         const v = GARAGE[i].vehicle;
         return (
-          <SlidingLabel key={v.id} index={i} position={position} reduce={reduce}>
+          <SlidingLabel key={v.id} index={i} position={position} reduce={reduce} align={landscape ? 'end' : 'center'}>
             <View style={[styles.bayRow, !landscape && styles.bayRowCenter]}>
               <Text style={styles.bay}>BAY {pad2(i + 1)}</Text>
               {isLocked(i) ? (
@@ -547,9 +623,7 @@ export function GarageScreen() {
                 </View>
               ) : null}
             </View>
-            <Text style={[styles.name, { fontSize: nameSize(v.name) }, !landscape && styles.center]} numberOfLines={1}>
-              {v.name.toUpperCase()}
-            </Text>
+            <VehicleName name={v.name} width={plateW} center={!landscape} />
           </SlidingLabel>
         );
       })}
@@ -557,8 +631,8 @@ export function GarageScreen() {
   );
   const prev = <ArrowButton dir="prev" disabled={selected === 0} onPress={() => flow.go(-1, reduce)} />;
   const next = <ArrowButton dir="next" disabled={selected === COUNT - 1} onPress={() => flow.go(1, reduce)} />;
-  const counter = <Counter position={position} reduce={reduce} selected={selected} indices={indices} />;
-  const waiting = !preview.loaded || access === 'checking';
+  const counter = <AllCarsButton position={position} reduce={reduce} selected={selected} indices={indices} onPress={() => router.push('/vehicles')} />;
+  const waiting = !creations.ready || access === 'checking';
   const quiet = !paintable && !viewOnly;
   const button = (
     <View style={styles.goWrap}>
@@ -585,16 +659,32 @@ export function GarageScreen() {
       </Pressable>
     </View>
   );
+  const compactHeader = landscape && width < 760;
   const parents = (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel="Parent area (for grown-ups)"
       onPress={() => router.push('/parents')}
       hitSlop={6}
-      style={({ pressed }) => [styles.parents, pressed && styles.pressed]}
+      style={({ pressed }) => [styles.headerButton, compactHeader && styles.headerButtonIcon, pressed && styles.pressed]}
     >
       <Icon name="parent" size={22} color={colors.textDim} accent={colors.textDim} />
-      <Text style={styles.parentsText}>Parents</Text>
+      {compactHeader ? null : <Text style={styles.headerButtonText}>Parents</Text>}
+    </Pressable>
+  );
+  const myCreations = (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel="My Creations"
+      onPress={() => {
+        tick();
+        router.push('/creations');
+      }}
+      hitSlop={6}
+      style={({ pressed }) => [styles.headerButton, pressed && styles.pressed]}
+    >
+      <Icon name="gallery" size={22} color={colors.text} accent={colors.amber} />
+      <Text style={[styles.headerButtonText, styles.headerButtonTextStrong]}>My Creations</Text>
     </Pressable>
   );
 
@@ -607,6 +697,10 @@ export function GarageScreen() {
               <Picture picture={garageBackground()} />
               <GarageAmbience animate={animate} underglow={false} />
             </Group>
+            {/* A soft fade behind the header row keeps the wordmark and buttons clear of the scene. */}
+            <Rect x={0} y={0} width={width} height={insets.top + 76}>
+              <LinearGradient start={vec(0, 0)} end={vec(0, insets.top + 76)} colors={['rgba(6, 8, 14, 0.94)', 'rgba(6, 8, 14, 0)']} />
+            </Rect>
           </Canvas>
           {/* The cars' canvas is the clipped viewport: nothing draws outside it. */}
           <Canvas style={StyleSheet.absoluteFill} pointerEvents="none" testID="garage-cars">
@@ -630,6 +724,7 @@ export function GarageScreen() {
           </View>
           <View style={[styles.topRight, { top: insets.top + 8, right: insets.right + 14 }]}>
             {counter}
+            {myCreations}
             {parents}
           </View>
           <View style={[styles.bottomLandscape, { left: insets.left + 24, right: insets.right + 20, bottom: insets.bottom + 14 }]} pointerEvents="box-none">
@@ -649,6 +744,7 @@ export function GarageScreen() {
             {next}
           </View>
           {button}
+          {myCreations}
         </View>
       )}
     </View>
@@ -688,18 +784,33 @@ const styles = StyleSheet.create({
   },
   lockText: { fontFamily: fonts.label, fontSize: 10, letterSpacing: 2, color: colors.textDim },
   topRight: { position: 'absolute', flexDirection: 'row', alignItems: 'center', gap: 14 },
-  parents: {
+  headerButton: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    height: 44,
-    paddingHorizontal: 12,
-    borderRadius: 22,
+    height: 48,
+    paddingHorizontal: 14,
+    borderRadius: 24,
     borderWidth: 1,
     borderColor: colors.line,
     backgroundColor: 'rgba(12, 17, 28, 0.7)',
   },
-  parentsText: { fontFamily: fonts.label, fontSize: 13, letterSpacing: 1, color: colors.textDim },
+  headerButtonIcon: { width: 48, paddingHorizontal: 0, justifyContent: 'center' },
+  headerButtonText: { fontFamily: fonts.label, fontSize: 13, letterSpacing: 1, color: colors.textDim },
+  headerButtonTextStrong: { color: colors.text },
+  allCars: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    height: 48,
+    paddingLeft: 14,
+    paddingRight: 16,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: colors.lineStrong,
+    backgroundColor: 'rgba(12, 17, 28, 0.78)',
+  },
+  allCarsCaption: { fontFamily: fonts.label, fontSize: 10, letterSpacing: 2, color: colors.cyan, marginBottom: -2 },
   goWrap: { alignItems: 'center' },
   goQuiet: { backgroundColor: colors.surfaceRaised, borderWidth: 1, borderColor: colors.lineStrong, shadowOpacity: 0, elevation: 0 },
   goLabelQuiet: { color: colors.textDim },
@@ -722,17 +833,15 @@ const styles = StyleSheet.create({
   hintLandscape: { position: 'absolute', bottom: 72, right: 0, width: 280 },
   name: {
     fontFamily: fonts.display,
-    fontSize: 30,
-    letterSpacing: 3,
     color: colors.text,
     textShadowColor: 'rgba(0,0,0,0.8)',
     textShadowRadius: 12,
   },
   counterRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 18 },
   counter: { flexDirection: 'row', alignItems: 'center' },
-  counterNowBox: { width: 34, height: 26, overflow: 'hidden' },
-  counterNow: { fontFamily: fonts.labelBold, fontSize: 20, letterSpacing: 1, color: colors.text, textAlign: 'right' },
-  counterTotal: { fontFamily: fonts.label, fontSize: 20, letterSpacing: 1, color: colors.textFaint },
+  counterNowBox: { width: 28, height: 22, overflow: 'hidden' },
+  counterNow: { fontFamily: fonts.labelBold, fontSize: 17, letterSpacing: 1, color: colors.text, textAlign: 'right' },
+  counterTotal: { fontFamily: fonts.label, fontSize: 17, letterSpacing: 1, color: colors.textFaint },
   arrow: {
     width: 56,
     height: 56,

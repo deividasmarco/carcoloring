@@ -57,16 +57,20 @@ Free or premium is set by permanent id in `src/content/collection.ts`, never by 
 |---|---|---|---|
 | Part maps (seed points, lassos, closing lines, merge decisions), one per vehicle | `src/content/vehicles/<id>/trace.ts` | Authored for this project against each source image | Project-owned |
 | Region masks, vector line art, silhouette, hit-test map, garage placement (one set per vehicle; none shared) | `src/content/vehicles/<id>/regions.generated.json` | Derived from each source image and its `trace.ts` by `scripts/build-traced-vehicle.ts` | Derived from the source image (rights as that image) |
-| Vehicle thumbnails (parent area) | `src/content/vehicles/<id>/thumbnail.png` | Rendered from the vehicle's own line art and paper by the same build | Derived from the source image (rights as that image) |
+| Vehicle thumbnails (All cars, parent area) | `src/content/vehicles/<id>/thumbnail.png` | Rendered from the vehicle's own line art and paper by the same build | Derived from the source image (rights as that image) |
+| Example colourings shown in the parent area (Ember GT, Comet Superbike), labelled "Example colouring" in the app | `assets/samples/<id>.png` | Rendered by `scripts/sample-previews.ts` from the vehicle's own part shapes and line art, filled with crayon-box colours | Derived from the source image (rights as that image) |
+| Gallery pictures of a child's creations (written on the device, not shipped) | app storage `creations/<id>/picture-*.png` | Composed at save time from the vehicle's layers and the child's paint | The child's own artwork on the vehicle drawing |
 | Car primer colours and ground shadows | `src/engine/render/vehicleLayers.ts` | Original, procedural | Project-owned |
 | "Neon bay" night-garage scene (wall, window and city, neon tubes, emblem, wet floor, turntable) | `src/content/scenes/neon-garage/background.ts`, `layout.ts` | Original, procedural | Project-owned |
 | Ambient animation (rain, reflections, light sweep, underglow) | `src/content/scenes/neon-garage/effects.tsx` | Original, procedural | Project-owned |
 | Wax-crayon and coloured-pencil paper grain | `src/engine/render/brushTextures.ts` | Generated at runtime from Skia's Perlin fractal-noise shader | Project-owned |
-| UI icons (garage, undo, redo, crayon, pencil, eraser, lights, wash, flag, save, share, check, close, fit, previous, next, lock, eye, parent, back) | `src/ui/icons.tsx` | Original vector icons | Project-owned |
+| UI icons (garage, undo, redo, crayon, pencil, eraser, lights, wash, flag, save, share, check, close, fit, previous, next, lock, eye, parent, back, grid, gallery, plus, trash) | `src/ui/icons.tsx` | Original vector icons | Project-owned |
 | Crayon illustrations in the colour rack | `src/ui/components/Crayon.tsx` | Original vector illustration | Project-owned |
 | App icon, Android adaptive icon (foreground and monochrome), splash icon, favicon | `assets/*.png` | Rendered from the original bay emblem by `scripts/previews/appIcons.preview.ts` | Project-owned |
 | Michroma typeface (wordmark, nameplate) | npm `@expo-google-fonts/michroma` | Copyright 2011 The Michroma Project Authors (github.com/googlefonts/Michroma-font) | Font: SIL Open Font License 1.1. Package code: MIT. Licence text in `node_modules/@expo-google-fonts/michroma/LICENSE_FONT` |
-| Chakra Petch typeface (labels, parent area) | npm `@expo-google-fonts/chakra-petch` | Copyright 2018 The Chakra Petch Project Authors (github.com/m4rc1e/Chakra-Petch) | Font: SIL Open Font License 1.1. Package code: MIT. Licence text in `node_modules/@expo-google-fonts/chakra-petch/LICENSE_FONT` |
+| Chakra Petch typeface (labels, buttons, counters) | npm `@expo-google-fonts/chakra-petch` | Copyright 2018 The Chakra Petch Project Authors (github.com/m4rc1e/Chakra-Petch) | Font: SIL Open Font License 1.1. Package code: MIT. Licence text in `node_modules/@expo-google-fonts/chakra-petch/LICENSE_FONT` |
+| Atkinson Hyperlegible Next typeface (instructions, parent area, longer text) | npm `@expo-google-fonts/atkinson-hyperlegible-next` | Copyright 2020-2024 The Atkinson Hyperlegible Next Project Authors (github.com/googlefonts/atkinson-hyperlegible-next) | Font: SIL Open Font License 1.1. Package code: MIT. Licence text in `node_modules/@expo-google-fonts/atkinson-hyperlegible-next/LICENSE_FONT` |
+| Michroma character widths (for fitting vehicle names) | `src/ui/fontMetrics.generated.ts` | Read from the Michroma font file by `scripts/font-metrics.mjs` | Font metrics (SIL Open Font License 1.1, as the font) |
 | CanvasKit WebAssembly (web build only) | `public/canvaskit.wasm`, copied from npm `canvaskit-wasm` by `npm run setup:web` | Google (Skia) | BSD-3-Clause |
 
 ## Notes

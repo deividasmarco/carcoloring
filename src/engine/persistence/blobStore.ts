@@ -12,6 +12,8 @@ export interface BlobStore {
   remove(key: string): Promise<void>;
   /** Local file URI for a key, when the platform has one (used for sharing). */
   uriFor?(key: string): string | null;
+  /** An address an <Image> can show a stored PNG from (file URI, or a data URI on the web). */
+  imageUri?(key: string): Promise<string | null>;
 }
 
 const ROOT = 'neon-bay';
@@ -54,6 +56,10 @@ export const blobStore: BlobStore = {
     if (f.exists) f.delete();
   },
   uriFor(key) {
+    const f = fileFor(key);
+    return f.exists ? f.uri : null;
+  },
+  async imageUri(key) {
     const f = fileFor(key);
     return f.exists ? f.uri : null;
   },

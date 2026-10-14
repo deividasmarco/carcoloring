@@ -54,7 +54,7 @@ async function openParents() {
   await page.getByTestId('gate-prompt').waitFor({ timeout: 30000 });
 }
 async function leaveParents() {
-  await page.getByLabel('Back to the garage').click();
+  await page.getByLabel('Back to the garage').last().click();
   await page.waitForFunction(() => !!globalThis.__neonBayGarage, null, { timeout: 60000 });
   await page.waitForTimeout(600);
 }
@@ -93,7 +93,7 @@ await openParents();
   check('nothing to buy, restore or open is reachable before the gate', leaks === 0, `${leaks} elements`);
   await page.screenshot({ path: `${SHOTS}/01-gate.png` });
   await controlsOk(page, 'gate 844×390', check);
-  await page.getByLabel('Back to the garage').click();
+  await page.getByLabel('Back to the garage').last().click();
   await page.waitForFunction(() => !!globalThis.__neonBayGarage, null, { timeout: 60000 });
   check('the gate has an obvious way back to the garage', !page.url().includes('/parents'));
 }
@@ -117,7 +117,7 @@ await openParents();
   check('three wrong answers pause the gate', (await continueKey().isDisabled()) && (await page.getByText('Please wait a little, then try a new question.').count()) === 1);
   await page.screenshot({ path: `${SHOTS}/02-gate-paused.png` });
   // Closing and reopening does not skip the pause.
-  await page.getByLabel('Back to the garage').click();
+  await page.getByLabel('Back to the garage').last().click();
   await page.waitForFunction(() => !!globalThis.__neonBayGarage, null, { timeout: 60000 });
   await openParents();
   check('reopening the gate does not skip the pause', await continueKey().isDisabled());
@@ -132,23 +132,37 @@ await openParents();
 await passGate(page);
 {
   check('the right answer opens the parent area', page.url().endsWith('/parents'));
-  check('status: premium not active', (await text('premium-status')).includes('Premium garage is not active'));
+  check('status: premium not active, and the screen leads with the offer', (await page.getByTestId('premium-status').getAttribute('aria-label')) === 'Premium garage is not active' && (await text('premium-status')).startsWith('Unlock the full garage'));
   await page.getByTestId('premium-price').waitFor({ timeout: 15000 });
   const price = (await text('premium-price')).replace(/\s*per month\s*$/, '').trim();
   check('the price comes from the store, localised (test store: EUR 2.99)', /2[.,]99/.test(price) && price.includes('€'), price);
   check('Subscribe names the price and period', (await page.getByLabel(`Subscribe for ${price} per month`).count()) === 1);
   const body = await bodyText();
   check('test-store builds say so plainly', body.includes('Test store (development build only). No real payment is made.'));
-  check(`explains what premium unlocks (${PREMIUM - 2} cars and 2 superbikes)`, body.includes(`Unlocks ${PREMIUM - 2} premium cars and 2 superbikes`));
-  const missing = VEHICLES.slice(3).filter(([, n]) => !body.includes(n)).map(([, n]) => n);
-  check('shows every premium vehicle', missing.length === 0 && (await page.getByLabel(`${PREMIUM} premium vehicles`).count()) === 1, missing.join(', '));
-  check('explains renewal and cancellation', /renews automatically every month/.test(body) && /cancel at any time/.test(body) && /cancelled at least 24 hours before the end of the current period/.test(body));
+  check(`explains what premium unlocks (${PREMIUM - 2} cars and 2 superbikes, counted from the registry)`, body.includes(`${PREMIUM - 2} more cars and 2 superbikes to colour.`) && body.includes(`Colour ${PREMIUM} more vehicles`));
+  check('example colourings are labelled as examples', (await page.getByText('EXAMPLE COLOURING').count()) === 2);
+  // The offer comes first; the whole collection follows on request.
+  const priceY = (await page.getByTestId('premium-price').boundingBox()).y;
+  const listY = (await page.getByRole('button', { name: `All ${PREMIUM} premium vehicles` }).boundingBox()).y;
+  check('the price comes before the full collection', priceY < listY && (await page.getByLabel(`${PREMIUM} premium vehicles`).count()) === 0);
+  await page.getByRole('button', { name: `All ${PREMIUM} premium vehicles` }).click();
+  await page.waitForTimeout(300);
+  const listed = await page.evaluate(() => document.body.innerText);
+  const missing = VEHICLES.slice(3).filter(([, n]) => !listed.includes(n)).map(([, n]) => n);
+  check('the full collection shows every premium vehicle', missing.length === 0 && (await page.getByLabel(`${PREMIUM} premium vehicles`).count()) === 1, missing.join(', '));
+  check('explains renewal and cancellation next to the price', /Renews automatically every month until cancelled/.test(body) && /Cancel any time/.test(body) && /at least 24\s+hours before the end of the current period/.test(body));
   check('says nothing is deleted when premium ends', body.includes('If premium ends, nothing is deleted'));
   check('no promise of monthly new vehicles', !/(new|more) (cars|vehicles|bikes)[^.]*(every|each) month|monthly (drops|additions|updates)|added every month/i.test(body));
-  check('no ads, tracking or accounts', body.includes('no ads, no tracking and no accounts'));
+  check('privacy wording claims only what the app does (no ads, no accounts)', body.includes('Neon Bay shows no ads and has no accounts') && !/no tracking|no data collection|collects no/i.test(body));
   check('Restore purchases is offered', (await page.getByRole('button', { name: 'Restore purchases' }).count()) === 1);
   const legal = (await page.getByRole('link', { name: 'Privacy policy' }).count()) + (await page.getByRole('link', { name: 'Terms of use' }).count());
-  const legalMissing = body.includes('Privacy policy link not configured') || body.includes('Terms of use link not configured');
+  const legalMissing = body.includes('Privacy policy URL missing');
+  // Configuration details only ever appear in the development-only box.
+  const customer = await page.evaluate(() => {
+    const dev = document.querySelector('[data-testid="dev-diagnostics"]');
+    return document.body.innerText.replace(dev ? dev.innerText : '', '');
+  });
+  check('no technical configuration messages outside the development-only box', !/app\.json|extra\.legal|RevenueCat key|not set up in this build|EXPO_PUBLIC/i.test(customer));
   check('privacy policy and terms: links, or a visible "not configured" warning', legal === 2 || legalMissing, legal === 2 ? 'both links' : 'NOT CONFIGURED: set extra.legal in app.json before release');
   await page.screenshot({ path: `${SHOTS}/03-parents.png`, fullPage: true });
 }
@@ -162,12 +176,12 @@ await passGate(page);
 await page.getByTestId('premium-price').waitFor({ timeout: 15000 });
 await testStore(page, (s) => (s.nextPurchase = 'cancel'));
 check('cancelled purchase: says nothing was charged', (await subscribeTap()) === 'The purchase was cancelled. Nothing was charged.');
-check('cancelled purchase: premium stays inactive', (await premiumState(page)).entitled === false && (await text('premium-status')).includes('not active'));
+check('cancelled purchase: premium stays inactive', (await premiumState(page)).entitled === false && (await page.getByTestId('premium-status').getAttribute('aria-label')) === 'Premium garage is not active');
 await testStore(page, (s) => (s.nextPurchase = 'network-error'));
 check('failed purchase: a clear message', (await subscribeTap()).includes('could not be reached'));
 await testStore(page, (s) => (s.nextPurchase = 'pending'));
 check('pending purchase (Ask to Buy): waiting for approval', (await subscribeTap()).includes('waiting for approval'));
-check('pending purchase: status shows it, premium stays locked', (await text('premium-status')).includes('Waiting for approval') && (await premiumState(page)).entitled === false);
+check('pending purchase: status shows it (no second Subscribe), premium stays locked', (await text('premium-pending')).includes('Waiting for approval') && (await page.getByLabel(/^Subscribe for/).count()) === 0 && (await premiumState(page)).entitled === false);
 await page.screenshot({ path: `${SHOTS}/04-pending.png` });
 await leaveParents();
 check('while pending, premium vehicles stay locked', (await actionOf(EMBER)) === 'locked');
@@ -384,7 +398,7 @@ for (const [w, h, n] of [
   await passGate(page);
   await page.waitForTimeout(500);
   await controlsOk(page, `parent area ${n} ${w}×${h}`, check, { scrolls: true });
-  const close = await page.getByLabel('Back to the garage').boundingBox();
+  const close = await page.getByLabel('Back to the garage').last().boundingBox();
   check(`parent area ${n} ${w}×${h}: the close button is on screen`, close && close.y >= 0 && close.y + close.height <= h);
   await page.screenshot({ path: `${SHOTS}/10-parents-${w}x${h}.png` });
   await leaveParents();

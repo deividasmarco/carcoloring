@@ -30,6 +30,8 @@ export interface MonthlyOffer {
   productId: string;
   /** Localised price from the store, e.g. "€2.99" or "2,99 €". */
   priceString: string;
+  /** Billing period from the store (ISO 8601, e.g. "P1M"), when it reports one. */
+  period: string | null;
   /** Opaque store package, handed back to `purchase`. */
   ref: unknown;
 }

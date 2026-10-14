@@ -8,12 +8,14 @@ import { blobStore } from '../engine/persistence/blobStore';
 export interface Settings {
   /** Ambient light and rain animation. */
   effects: boolean;
+  /** Light vibration on taps (phones that support it). */
+  haptics: boolean;
   /** Car last selected in the garage (restored after a restart). */
   lastVehicle?: string;
 }
 
 const KEY = 'settings.json';
-let state: Settings = { effects: true };
+let state: Settings = { effects: true, haptics: true };
 let loaded = false;
 let ready = false;
 const listeners = new Set<() => void>();
@@ -35,6 +37,11 @@ async function load() {
   }
   ready = true;
   emit();
+}
+
+/** Current settings, outside React. */
+export function getSettings(): Settings {
+  return state;
 }
 
 export function setSettings(patch: Partial<Settings>) {

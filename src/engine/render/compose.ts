@@ -62,3 +62,35 @@ export function composeArtwork(input: ComposeInput): SkImage {
   surface.dispose();
   return img;
 }
+
+/**
+ * A small picture of one painted vehicle on a transparent ground, for My
+ * Creations (PNG bytes): the vehicle's base, its paint and its line art,
+ * cropped to the vehicle. Lists show these instead of live drawing canvases.
+ */
+export function composeVehiclePicture(vehicle: VehicleRuntime, paint: SkImage | null, outWidth = 480): Uint8Array {
+  const b = vehicle.layout.silhouetteBounds;
+  const pad = 12;
+  const scale = outWidth / (b.width + pad * 2);
+  const outHeight = Math.max(1, Math.round((b.height + pad * 2) * scale));
+  const surface = Skia.Surface.Make(outWidth, outHeight);
+  if (!surface) throw new Error('Could not allocate a picture surface');
+  const canvas = surface.getCanvas();
+  canvas.clear(Skia.Color('transparent'));
+  canvas.scale(scale, scale);
+  canvas.translate(pad - b.x, pad - b.y);
+  canvas.drawPicture(vehicle.basePicture);
+  if (paint) {
+    const r = vehicle.layout.paintRect;
+    const p = Skia.Paint();
+    canvas.drawImageRect(paint, Skia.XYWHRect(0, 0, paint.width(), paint.height()), Skia.XYWHRect(r.x, r.y, r.width, r.height), p);
+    p.dispose();
+  }
+  canvas.drawPicture(vehicle.overlayPicture);
+  surface.flush();
+  const img = surface.makeImageSnapshot();
+  const bytes = img.encodeToBytes();
+  img.dispose();
+  surface.dispose();
+  return bytes;
+}

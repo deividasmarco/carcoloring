@@ -1,7 +1,7 @@
 import { FREE_VEHICLE_IDS, tierOf } from '../src/content/collection';
 import { GARAGE, garageIndexOf } from '../src/content/registry';
 import { TRACED_VEHICLES } from '../src/content/vehicles/traces';
-import { drawingKeyOf } from '../src/state/drawingKey';
+import { drawingKeys } from '../src/engine/persistence/drawingStore';
 
 describe('vehicle registry', () => {
   it('lists exactly the three free vehicles first: Apex GT, Blaze GT, Storm Sedan', () => {
@@ -18,8 +18,10 @@ describe('vehicle registry', () => {
 
   it('keys saves and the remembered selection by id, never by position', () => {
     for (const [i, e] of GARAGE.entries()) {
-      // A drawing's storage key is the vehicle id and asset version only.
-      expect(drawingKeyOf(e.vehicle)).toEqual({ vehicleId: e.vehicle.id, assetVersion: e.vehicle.generated.assetVersion ?? 1 });
+      // Older saves are found by vehicle id and artwork version; new pictures by their own creation id.
+      const version = e.vehicle.generated.assetVersion ?? 1;
+      expect(drawingKeys({ vehicleId: e.vehicle.id, assetVersion: version }).state).toBe(`drawings/${e.vehicle.id}/v${version}/state.json`);
+      expect(drawingKeys({ vehicleId: e.vehicle.id, assetVersion: version, creationId: 'c-1' }).state).toBe('creations/c-1/state.json');
       // The last selection is stored as an id and found again wherever the vehicle now sits.
       expect(garageIndexOf(e.vehicle.id)).toBe(i);
     }

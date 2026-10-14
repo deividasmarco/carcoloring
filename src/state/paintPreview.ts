@@ -1,9 +1,8 @@
 /**
- * Per-vehicle garage preview: the small paint-layer PNG saved with each
- * drawing, and whether the vehicle has saved strokes. Loaded on demand (the
- * garage asks for the selected car and its neighbours) and cached in memory.
- * Every entry is keyed by vehicle id + asset version, so a car can never show
- * another car's paint.
+ * Garage preview of a creation: the small paint-layer PNG saved with it, and
+ * whether it has strokes. Loaded on demand (the garage asks for the selected
+ * vehicle's latest creation and its neighbours') and cached in memory, keyed
+ * by creation id, so a vehicle can never show another vehicle's paint.
  */
 import { useEffect, useSyncExternalStore } from 'react';
 import { Skia, type SkImage } from '@shopify/react-native-skia';
@@ -19,10 +18,12 @@ export interface PaintPreview {
 }
 
 const EMPTY: PaintPreview = { image: null, hasPaint: false, loaded: false };
+/** A vehicle with no creation yet. */
+const NONE: PaintPreview = { image: null, hasPaint: false, loaded: true };
 const cache = new Map<string, PaintPreview>();
 const loading = new Set<string>();
 const listeners = new Set<() => void>();
-const id = (k: DrawingKey) => `${k.vehicleId}@${k.assetVersion}`;
+const id = (k: DrawingKey) => k.creationId ?? `${k.vehicleId}@${k.assetVersion}`;
 
 function set(k: DrawingKey, v: PaintPreview) {
   const prev = cache.get(id(k));
@@ -59,15 +60,15 @@ export function preloadPaintPreview(k: DrawingKey) {
     .finally(() => loading.delete(key));
 }
 
-export function getPaintPreview(k: DrawingKey): PaintPreview {
-  return cache.get(id(k)) ?? EMPTY;
+export function getPaintPreview(k: DrawingKey | null): PaintPreview {
+  return k ? (cache.get(id(k)) ?? EMPTY) : NONE;
 }
 
-/** Re-renders when any preview changes; loads this vehicle's preview when `load` is true. */
-export function usePaintPreview(k: DrawingKey, load = true): PaintPreview {
+/** Re-renders when any preview changes; loads this creation's preview when `load` is true (null: no creation). */
+export function usePaintPreview(k: DrawingKey | null, load = true): PaintPreview {
   useEffect(() => {
-    if (load) preloadPaintPreview(k);
-  }, [k.vehicleId, k.assetVersion, load]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (k && load) preloadPaintPreview(k);
+  }, [k?.creationId, k?.vehicleId, k?.assetVersion, load]); // eslint-disable-line react-hooks/exhaustive-deps
   return useSyncExternalStore(
     (l) => {
       listeners.add(l);

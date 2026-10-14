@@ -103,5 +103,6 @@ Check the Google Play Families policy for apps aimed at children.
 
 ## Before release
 
-- Set `extra.legal.privacyPolicyUrl` and `extra.legal.termsOfUseUrl` in `app.json`. On iOS the terms link falls back to Apple's standard EULA. Until both are set, the parent area shows a "not configured" warning.
+- Set `extra.legal.privacyPolicyUrl` and `extra.legal.termsOfUseUrl` in `app.json` (public https pages you control). On iOS the terms link falls back to Apple's standard licence agreement. Customers never see configuration messages: a missing link is simply not shown, and development builds list it in a "development only" box in the parent area.
+- Run `npm run check:release`. It fails until the legal URLs and the public RevenueCat keys for each platform are set (a secret `sk_…` key or a key with the wrong prefix also fails it). EAS runs the same check before every **production** build (the `eas-build-pre-install` script in `package.json`), so a store build can't be made without them.
 - Do the artwork rights review (see `ASSET_MANIFEST.md`).

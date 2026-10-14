@@ -74,6 +74,7 @@ export function createPremiumStore(client: PurchasesClient, deps: PremiumStoreDe
   };
   let lastInfo: CustomerInfoLike | null = null;
   let expiryTimer: unknown = null;
+  let refreshRequested = false;
   let started = false;
   const listeners = new Set<() => void>();
 
@@ -136,7 +137,8 @@ export function createPremiumStore(client: PurchasesClient, deps: PremiumStoreDe
     set({ offer: { status: 'loading' } });
     try {
       const offer = await client.getMonthlyOffer();
-      set({ offer: offer ? { status: 'ready', offer } : { status: 'none', message: client.unavailableReason ?? 'The subscription is not available right now.' } });
+      // Configuration details stay in `unavailableReason` (development diagnostics); customers get plain words.
+      set({ offer: offer ? { status: 'ready', offer } : { status: 'none', message: UNAVAILABLE } });
     } catch (e) {
       set({
         offer: {
@@ -193,6 +195,8 @@ export function createPremiumStore(client: PurchasesClient, deps: PremiumStoreDe
 
   async function manage() {
     if (!deps.isParentGateOpen()) return gateClosed();
+    // The subscription may change in the store's own screens: check again on return.
+    refreshRequested = true;
     try {
       await client.manageSubscriptions(lastInfo);
     } catch {
@@ -217,12 +221,22 @@ export function createPremiumStore(client: PurchasesClient, deps: PremiumStoreDe
     restore,
     manage,
     clearAction: () => set({ action: { status: 'idle' } }),
+    /** True once after subscription management was opened (refresh on return, whatever the throttle). */
+    takeRefreshRequest() {
+      const r = refreshRequested;
+      refreshRequested = false;
+      return r;
+    },
   };
 }
+
+/** What customers see when purchases cannot be offered (the reason is for developers). */
+export const UNAVAILABLE = 'Purchases are unavailable right now. Please try again later.';
 
 export type PremiumStore = ReturnType<typeof createPremiumStore>;
 
 function purchaseMessage(reason: string, message: string) {
+  if (__DEV__ && message) console.warn(`[purchases] ${reason}: ${message}`);
   switch (reason) {
     case 'network':
       return 'The store could not be reached. Check the connection and try again.';
@@ -233,7 +247,7 @@ function purchaseMessage(reason: string, message: string) {
     case 'busy':
       return 'A purchase is already in progress.';
     case 'unavailable':
-      return message;
+      return UNAVAILABLE;
     default:
       return 'The purchase did not go through. Please try again.';
   }

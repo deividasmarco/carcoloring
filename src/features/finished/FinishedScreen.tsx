@@ -84,7 +84,8 @@ function Artwork({ image, width, height, celebrate }: { image: SkImage; width: n
   );
 }
 
-export function FinishedScreen({ entry }: { entry: GarageEntry }) {
+/** `creationId`: the picture just finished. */
+export function FinishedScreen({ entry, creationId }: { entry: GarageEntry; creationId?: string }) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
@@ -94,11 +95,12 @@ export function FinishedScreen({ entry }: { entry: GarageEntry }) {
 
   useEffect(() => {
     let alive = true;
-    getArtwork(entry).then((img) => alive && setImage(img));
+    const key = { vehicleId: entry.vehicle.id, assetVersion: entry.vehicle.generated.assetVersion ?? 1, creationId };
+    getArtwork(entry, key).then((img) => alive && setImage(img));
     return () => {
       alive = false;
     };
-  }, [entry]);
+  }, [entry, creationId]);
 
   useEffect(() => {
     if (!notice) return;
@@ -116,7 +118,7 @@ export function FinishedScreen({ entry }: { entry: GarageEntry }) {
   const backToPaint = () =>
     router.canGoBack()
       ? router.back()
-      : router.replace({ pathname: '/studio/[vehicleId]', params: { vehicleId: entry.vehicle.id } });
+      : router.replace({ pathname: '/studio/[vehicleId]', params: creationId ? { vehicleId: entry.vehicle.id, creation: creationId } : { vehicleId: entry.vehicle.id } });
   const fileName = `${entry.vehicle.id}-${new Date().toISOString().slice(0, 10)}`;
 
   const actions = (

@@ -122,7 +122,7 @@ class RevenueCatClient implements PurchasesClient {
     const current = offerings.current;
     const pkg = current?.availablePackages.find(matchesProduct) ?? current?.monthly ?? null;
     if (!pkg) return null;
-    return { productId: pkg.product.identifier, priceString: pkg.product.priceString, ref: pkg };
+    return { productId: pkg.product.identifier, priceString: pkg.product.priceString, period: pkg.product.subscriptionPeriod, ref: pkg };
   }
 
   async purchase(offer: MonthlyOffer): Promise<PurchaseOutcome> {

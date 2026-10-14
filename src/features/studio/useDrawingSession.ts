@@ -1,6 +1,7 @@
 /**
- * Owns a DrawingSession for the studio: restores saved progress, autosaves,
- * and exposes Skia shared values so drawing never re-renders React.
+ * Owns a DrawingSession for the studio: restores the creation being painted,
+ * autosaves it (strokes, garage preview and its My Creations picture), and
+ * exposes Skia shared values so drawing never re-renders React.
  */
 import { useEffect, useMemo, useState } from 'react';
 import { AppState } from 'react-native';
@@ -9,12 +10,14 @@ import type { SkImage, SkPicture } from '@shopify/react-native-skia';
 import type { GarageEntry } from '../../content/registry';
 import { installWebProbe } from '../../dev/webProbe';
 import { blobStore } from '../../engine/persistence/blobStore';
+import { creationFiles } from '../../engine/persistence/creationStore';
 import { loadDrawing, saveDrawing, type DrawingKey } from '../../engine/persistence/drawingStore';
+import { composeVehiclePicture } from '../../engine/render/compose';
 import { disposeLater } from '../../engine/render/disposeLater';
 import { DrawingSession, type HistoryState } from '../../engine/session/drawingSession';
 import { getVehicleRuntime, type VehicleDefinition } from '../../engine/vehicle/vehicleRuntime';
 import type { ViewTransform } from '../../engine/view/viewTransform';
-import { drawingKeyOf } from '../../state/drawingKey';
+import { ensureListed, getCreation, recordSave } from '../../state/creations';
 import { savePaintPreview } from '../../state/paintPreview';
 
 const SAVE_DEBOUNCE_MS = 700;
@@ -102,14 +105,33 @@ class Autosaver {
       clearTimeout(this.timer);
       this.timer = null;
     }
+    const key = this.key;
+    const id = key.creationId!;
+    const hasPaint = this.session.historyState.hasPaint;
+    // A new picture is only kept once something has been painted on it.
+    if (!hasPaint && !getCreation(id)) return this.chain;
     const snap = this.session.snapshotForSave();
     const preview = this.session.previewPng();
-    const hasPaint = this.session.historyState.hasPaint;
+    const paint = this.session.paintImage;
+    let picture: Uint8Array | null = null;
+    try {
+      picture = composeVehiclePicture(this.session.vehicle, hasPaint ? paint : null);
+    } catch (e) {
+      console.warn('Composing the picture failed', e);
+    } finally {
+      paint.dispose();
+    }
+    const pictureName = `picture-${Date.now().toString(36)}.png`;
     // Serialise writes so an older save can never overwrite a newer one.
     this.chain = this.chain
       .then(async () => {
-        await saveDrawing(blobStore, this.key, snap.drawing, snap.basePng);
-        await savePaintPreview(this.key, preview, hasPaint);
+        await ensureListed(key);
+        await saveDrawing(blobStore, key, snap.drawing, snap.basePng);
+        await savePaintPreview(key, preview, hasPaint);
+        const previous = getCreation(id)?.picture;
+        if (picture) await blobStore.writeBytes(creationFiles(id, pictureName).picture!, picture);
+        await recordSave(id, { hasPaint, picture: picture ? pictureName : previous });
+        if (picture && previous && previous !== pictureName) await blobStore.remove(creationFiles(id, previous).picture!);
       })
       .catch((e) => console.warn('Saving the drawing failed', e));
     return this.chain;
@@ -121,7 +143,8 @@ class Autosaver {
   }
 }
 
-export function useDrawingSession(entry: GarageEntry) {
+/** `key` names the creation being painted (a new id for a new picture). */
+export function useDrawingSession(entry: GarageEntry, key: DrawingKey) {
   const paint = useSharedValue<SkImage | null>(null);
   const live = useSharedValue<SkPicture | null>(null);
   const transform = useSharedValue<ViewTransform>({ scale: 1, tx: 0, ty: 0 });
@@ -134,7 +157,7 @@ export function useDrawingSession(entry: GarageEntry) {
     () => createStudioSession(entry.vehicle, { paint, live, transform }, events),
     [entry.vehicle, paint, live, transform, events],
   );
-  const saver = useMemo(() => new Autosaver(session, drawingKeyOf(entry.vehicle)), [session, entry.vehicle]);
+  const saver = useMemo(() => new Autosaver(session, key), [session, key]);
 
   // Route session events into React state and the autosaver.
   useEffect(
@@ -147,7 +170,7 @@ export function useDrawingSession(entry: GarageEntry) {
     let alive = true;
     installWebProbe(session);
     const ids = new Set(session.vehicle.regions.map((r) => r.id));
-    loadDrawing(blobStore, drawingKeyOf(entry.vehicle), ids)
+    loadDrawing(blobStore, key, ids)
       .then((saved) => {
         if (!alive) return;
         if (saved) session.restore(saved.drawing, saved.basePng);
@@ -159,7 +182,7 @@ export function useDrawingSession(entry: GarageEntry) {
       alive = false;
       installWebProbe(null);
     };
-  }, [session, entry.vehicle, paint]);
+  }, [session, key, paint]);
 
   // Save when the app goes to the background and when leaving the studio.
   useEffect(() => {

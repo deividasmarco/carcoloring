@@ -14,8 +14,10 @@ import { StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { GarageEntry } from '../../content/registry';
+import type { DrawingKey } from '../../engine/persistence/drawingStore';
 import type { SizeIndex, ToolId } from '../../engine/stroke/types';
 import { EXPORT_SCALE, handOffArtwork } from '../../state/artworkHandoff';
+import { requestGarageSelection } from '../../state/garageSelection';
 import { canPaint, useVehicleAccess } from '../../state/premium';
 import { setSettings, useReduceMotion, useSettings } from '../../state/settings';
 import { CrayonRack } from '../../ui/components/CrayonRack';
@@ -32,13 +34,14 @@ const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v
 /** Smallest touch target any control may have (points). */
 const MIN_TOUCH = 44;
 
-export function StudioScreen({ entry }: { entry: GarageEntry }) {
+/** `drawingKey`: the creation being painted. */
+export function StudioScreen({ entry, drawingKey }: { entry: GarageEntry; drawingKey: DrawingKey }) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
   const settings = useSettings();
   const reduceMotion = useReduceMotion();
-  const { session, paint, live, transform, history, zoomed, saveNow } = useDrawingSession(entry);
+  const { session, paint, live, transform, history, zoomed, saveNow } = useDrawingSession(entry, drawingKey);
 
   const [tool, setTool] = useState<ToolId>('crayon');
   const [lastColorTool, setLastColorTool] = useState<ToolId>('crayon');
@@ -69,8 +72,8 @@ export function StudioScreen({ entry }: { entry: GarageEntry }) {
 
   const finish = async () => {
     await saveNow();
-    handOffArtwork(entry.vehicle.id, session.exportImage(entry.scene, EXPORT_SCALE));
-    router.push({ pathname: '/finished/[vehicleId]', params: { vehicleId: entry.vehicle.id } });
+    handOffArtwork(drawingKey.creationId!, session.exportImage(entry.scene, EXPORT_SCALE));
+    router.push({ pathname: '/finished/[vehicleId]', params: { vehicleId: entry.vehicle.id, creation: drawingKey.creationId! } });
   };
 
   const landscape = width > height;
@@ -104,8 +107,12 @@ export function StudioScreen({ entry }: { entry: GarageEntry }) {
       <IconButton icon="wash" label="Wash the car" size={btn} disabled={locked || !history.hasPaint} onPress={() => setWashing(true)} />
     </>
   );
-  // Back when the garage is underneath; otherwise (deep link, web reload) go to it.
-  const goHome = () => (router.canGoBack() ? router.back() : router.replace('/'));
+  // Always to the garage (also when opened from My Creations), showing this vehicle.
+  const goHome = () => {
+    requestGarageSelection(entry.vehicle.id);
+    if (router.canGoBack()) router.dismissTo('/');
+    else router.replace('/');
+  };
   const home = <IconButton icon="garage" label="Back to the garage" size={btn} onPress={goHome} />;
   const done = <IconButton icon="flag" label="Done" size={btn} primary accent={colors.bg} onPress={finish} />;
 

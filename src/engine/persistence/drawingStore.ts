@@ -1,9 +1,14 @@
 /**
- * Saved drawing format, one folder per vehicle and asset version:
+ * Saved drawing format. Each creation (one picture of one vehicle) has its own
+ * folder, named by its permanent creation id (see creationStore.ts):
  *
- *   drawings/<vehicleId>/v<assetVersion>/state.json  undoable strokes + redo stack
- *   drawings/<vehicleId>/v<assetVersion>/base.png    strokes flattened out of the undo window
- *   drawings/<vehicleId>/v<assetVersion>/thumb.png   garage preview (paint layer only)
+ *   creations/<creationId>/state.json  undoable strokes + redo stack
+ *   creations/<creationId>/base.png    strokes flattened out of the undo window
+ *   creations/<creationId>/thumb.png   paint layer only (garage preview)
+ *
+ * Before creations, each vehicle had one drawing per asset version, in
+ * drawings/<vehicleId>/v<assetVersion>/ (same files). Those are copied into
+ * creations once and left in place.
  *
  * Strokes are stored as region ids + vehicle-space points, so a saved drawing
  * is independent of screen size and re-renders identically after restore.
@@ -24,10 +29,12 @@ export interface SavedDrawing {
   hasBase: boolean;
 }
 
-/** Which vehicle geometry a drawing belongs to. */
+/** Which drawing: a creation (when `creationId` is set) or a vehicle's pre-creations drawing. */
 export interface DrawingKey {
   vehicleId: string;
+  /** The vehicle geometry it was painted on. */
   assetVersion: number;
+  creationId?: string;
 }
 
 interface StoredStroke {
@@ -66,7 +73,7 @@ export function unpackStroke(s: StoredStroke): Stroke {
 }
 
 export const drawingKeys = (k: DrawingKey) => {
-  const dir = `drawings/${k.vehicleId}/v${k.assetVersion}`;
+  const dir = k.creationId ? `creations/${k.creationId}` : `drawings/${k.vehicleId}/v${k.assetVersion}`;
   return { state: `${dir}/state.json`, base: `${dir}/base.png`, thumb: `${dir}/thumb.png` };
 };
 
@@ -116,7 +123,7 @@ const migrations = new WeakMap<BlobStore, Map<string, Promise<boolean>>>();
  * migration, so a slow duplicate can never write the old state over a newer save.
  */
 export function migrateLegacyDrawing(store: BlobStore, k: DrawingKey): Promise<boolean> {
-  if (k.assetVersion !== 1) return Promise.resolve(false);
+  if (k.assetVersion !== 1 || k.creationId) return Promise.resolve(false);
   let running = migrations.get(store);
   if (!running) {
     running = new Map();
