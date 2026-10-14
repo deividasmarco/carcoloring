@@ -57,6 +57,7 @@ import { setSettings, useReduceMotion, useSettings, useSettingsReady } from '../
 import { tick } from '../../ui/haptics';
 import { Icon } from '../../ui/icons';
 import { colors, fonts } from '../../ui/theme';
+import { createCarouselFlow, type NavEvents, type Range } from './carouselFlow';
 import { swipeRelease } from './swipeRelease';
 
 const COUNT = GARAGE.length;
@@ -135,17 +136,6 @@ interface Nav {
   drag: SharedValue<DragState>;
 }
 
-interface NavEvents {
-  /** A finger is down on the carousel; `from` is the car it starts from. */
-  engage(from: number): void;
-  /** The finger lifted (whether or not it swiped). */
-  release(): void;
-  /** A snap to `target` started. */
-  snap(target: number, token: number): void;
-  /** The snap with `token` finished at `target`. */
-  settled(target: number, token: number): void;
-}
-
 /** Animates the carousel to `target`. Runs on the UI thread. */
 function snapTo(nav: Nav, target: number, reduce: boolean, velocity: number, ev: NavEvents) {
   'worklet';
@@ -191,7 +181,13 @@ function createCarouselPan(nav: Nav, slideW: number, reduce: boolean, ev: NavEve
       const start = nav.startIndex.value;
       const { dir, velocity } = swipeRelease(e.translationX, e.velocityX, slideW);
       nav.drag.value = { active: false, endedAt: Date.now(), release: { travel: -e.translationX, velocity: -e.velocityX / slideW, dir } };
-      snapTo(nav, clamp(start + dir, 0, COUNT - 1), reduce, velocity, ev);
+      const to = clamp(start + dir, 0, COUNT - 1);
+      if (Number.isInteger(to)) {
+        snapTo(nav, to, reduce, velocity, ev);
+      } else {
+        runOnJS(reportBadRelease)(start, dir);
+        snapTo(nav, nav.target.value, reduce, 0, ev);
+      }
     })
     .onFinalize(() => {
       if (nav.drag.value.active) {
@@ -203,80 +199,37 @@ function createCarouselPan(nav: Nav, slideW: number, reduce: boolean, ev: NavEve
     });
 }
 
-interface Range {
-  lo: number;
-  hi: number;
+/** Ids in garage order, and each one's position. Selection is by id; positions are for the carousel only. */
+const GARAGE_IDS = GARAGE.map((e) => e.vehicle.id);
+const INDEX_BY_ID = new Map(GARAGE_IDS.map((id, i) => [id, i]));
+
+/** Position of a garage vehicle. Ids come from the registry, so a miss is a programming error. */
+function indexOfVehicle(id: string): number {
+  const i = INDEX_BY_ID.get(id);
+  if (i === undefined) throw new Error(`Vehicle "${id}" is not in the garage registry.`);
+  return i;
 }
 
-/**
- * JS side of the carousel: which car is selected and which cars are mounted.
- * At rest: the selected car and its direct neighbours (hidden). A snap mounts
- * the cars it passes; once the latest snap settles and no finger is down,
- * everything further than one car away unmounts.
- */
-function createCarouselFlow(nav: Nav, initial: number, setRange: (update: (r: Range) => Range) => void, setSelected: (i: number) => void) {
-  const f = { engaged: false, animating: false, token: 0, target: initial, selected: initial };
-  const expand = (a: number, b: number) =>
-    setRange((r) => {
-      const lo = clamp(Math.min(r.lo, a), 0, COUNT - 1);
-      const hi = clamp(Math.max(r.hi, b), 0, COUNT - 1);
-      return lo === r.lo && hi === r.hi ? r : { lo, hi };
-    });
-  const focus = (i: number) =>
-    setRange((r) => {
-      const lo = clamp(i - 1, 0, COUNT - 1);
-      const hi = clamp(i + 1, 0, COUNT - 1);
-      return r.lo === lo && r.hi === hi ? r : { lo, hi };
-    });
-  const choose = (i: number) => {
-    if (i === f.selected) return;
-    f.selected = i;
-    setSelected(i);
-    tick();
-    setSettings({ lastVehicle: GARAGE[i].vehicle.id });
-  };
-  const events: NavEvents = {
-    engage: (from) => {
-      f.engaged = true;
-      expand(from - 1, from + 1);
-    },
-    release: () => {
-      f.engaged = false;
-      if (!f.animating) focus(f.target);
-    },
-    snap: (t, tok) => {
-      f.token = tok;
-      f.animating = true;
-      f.target = t;
-      expand(t - 1, t + 1);
-      choose(t);
-    },
-    settled: (t, tok) => {
-      if (tok !== f.token) return; // a newer snap has started since
-      f.animating = false;
-      if (!f.engaged) focus(t);
-    },
-  };
+/** Carousel controls on the UI thread (module level: component hooks may not write shared values). */
+function navControls(nav: Nav) {
   return {
-    nav,
-    events,
-    /** One car back or forward, counted from the car being snapped to, so quick repeated taps add up. */
-    go(dir: -1 | 1, reduce: boolean) {
-      const t = clamp(f.target + dir, 0, COUNT - 1);
-      f.target = t;
-      expand(t - 1, t + 1);
-      runOnUI(snapTo)(nav, t, reduce, 0, events);
-    },
-    /** Jumps to `i` without animation (restoring the saved selection). */
-    restore(i: number) {
-      Object.assign(f, { animating: false, target: i, selected: i });
-      setSelected(i);
-      focus(i);
+    startSnap: (t: number, reduce: boolean, events: NavEvents) => runOnUI(snapTo)(nav, t, reduce, 0, events),
+    jump: (t: number) => {
       nav.token.value += 1; // ignore any snap still running
-      nav.position.value = i;
-      nav.target.value = i;
+      nav.position.value = t;
+      nav.target.value = t;
     },
   };
+}
+
+/** Side effects of selecting a vehicle: a light tick, and remembering it for next time. */
+function rememberSelection(id: string) {
+  tick();
+  setSettings({ lastVehicle: id });
+}
+
+function reportBadRelease(start: number, dir: number) {
+  console.error(`[garage] a swipe from position ${start} by ${dir} gave no valid vehicle; it springs back instead`);
 }
 
 function openStudio(router: ReturnType<typeof useRouter>, entry: GarageEntry, drag: SharedValue<DragState>) {
@@ -414,7 +367,9 @@ export function GarageScreen() {
   const reduce = useReduceMotion();
   const animate = settings.effects && !reduce;
 
-  const [selected, setSelected] = useState(() => garageIndexOf(settings.lastVehicle));
+  // The selection is a permanent vehicle id (a remembered id that no longer exists starts on the first vehicle).
+  const [selectedId, setSelectedId] = useState(() => GARAGE_IDS[garageIndexOf(settings.lastVehicle)]);
+  const selected = indexOfVehicle(selectedId);
   // Cars currently mounted: at rest, the selected one and its hidden neighbours.
   const [range, setRange] = useState<Range>(() => ({ lo: Math.max(0, selected - 1), hi: Math.min(COUNT - 1, selected + 1) }));
   const position = useSharedValue(selected);
@@ -423,14 +378,27 @@ export function GarageScreen() {
   const startIndex = useSharedValue(selected);
   const anchor = useSharedValue(selected);
   const drag = useSharedValue<DragState>({ active: false, endedAt: 0 });
-  const [flow] = useState(() => createCarouselFlow({ position, target, token, startIndex, anchor, drag }, selected, setRange, setSelected));
+  const [nav] = useState<Nav>(() => ({ position, target, token, startIndex, anchor, drag }));
+  const newFlow = (id: string) => createCarouselFlow({ ids: GARAGE_IDS, setRange, setSelectedId, onSelect: rememberSelection, ...navControls(nav) }, id);
+  const [current, setCurrent] = useState(() => ({ ids: GARAGE_IDS, flow: newFlow(selectedId) }));
+  if (current.ids !== GARAGE_IDS) {
+    // The vehicle list itself changed under a running garage (a development hot
+    // reload): a flow built for the old list would read positions that no
+    // longer exist. Start one for the new list, on the same vehicle.
+    setCurrent({ ids: GARAGE_IDS, flow: newFlow(INDEX_BY_ID.has(selectedId) ? selectedId : GARAGE_IDS[0]) });
+  }
+  const flow = current.flow;
+  // Keep the carousel on the selected vehicle whenever a flow starts (its position may have moved in the list).
+  useEffect(() => {
+    flow.select(flow.selectedId());
+  }, [flow]);
   const restored = useRef(false);
 
   // Restore the last selected car once saved settings are known.
   useEffect(() => {
     if (!settingsReady || restored.current) return;
     restored.current = true;
-    flow.restore(garageIndexOf(settings.lastVehicle));
+    flow.select(GARAGE_IDS[garageIndexOf(settings.lastVehicle)]);
   }, [settingsReady, settings.lastVehicle, flow]);
 
   const indices = useMemo(() => {
@@ -513,7 +481,7 @@ export function GarageScreen() {
   }, [landscape, width, height, insets.top, insets.bottom, insets.left, insets.right]);
 
   // ── Navigation ───────────────────────────────────────────────────────────
-  const pan = useMemo(() => createCarouselPan(flow.nav, layout.frame.slideW, reduce, flow.events), [flow, layout.frame.slideW, reduce]);
+  const pan = useMemo(() => createCarouselPan(nav, layout.frame.slideW, reduce, flow.events), [nav, flow, layout.frame.slideW, reduce]);
   useEffect(() => {
     probeState.current.stage = { slideW: layout.frame.slideW, top: layout.view.ty + CAR_BOX.y * layout.view.scale, ground: layout.groundY };
     probeState.current.view = layout.view;

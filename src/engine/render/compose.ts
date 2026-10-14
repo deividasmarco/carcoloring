@@ -37,12 +37,9 @@ export function drawComposition(canvas: SkCanvas, input: Omit<ComposeInput, 'sca
   canvas.scale(p.scale, p.scale);
   canvas.drawPicture(vehicle.basePicture);
   if (paint) {
-    canvas.drawImageRect(
-      paint,
-      Skia.XYWHRect(0, 0, paint.width(), paint.height()),
-      Skia.XYWHRect(paintRect.x, paintRect.y, paintRect.width, paintRect.height),
-      Skia.Paint(),
-    );
+    const imagePaint = Skia.Paint();
+    canvas.drawImageRect(paint, Skia.XYWHRect(0, 0, paint.width(), paint.height()), Skia.XYWHRect(paintRect.x, paintRect.y, paintRect.width, paintRect.height), imagePaint);
+    imagePaint.dispose(); // the canvas keeps its own copy
   }
   canvas.drawPicture(vehicle.overlayPicture);
   canvas.restore();

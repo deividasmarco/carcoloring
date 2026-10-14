@@ -10,6 +10,7 @@ import type { GarageEntry } from '../../content/registry';
 import { installWebProbe } from '../../dev/webProbe';
 import { blobStore } from '../../engine/persistence/blobStore';
 import { loadDrawing, saveDrawing, type DrawingKey } from '../../engine/persistence/drawingStore';
+import { disposeLater } from '../../engine/render/disposeLater';
 import { DrawingSession, type HistoryState } from '../../engine/session/drawingSession';
 import { getVehicleRuntime, type VehicleDefinition } from '../../engine/vehicle/vehicleRuntime';
 import type { ViewTransform } from '../../engine/view/viewTransform';
@@ -18,10 +19,6 @@ import { savePaintPreview } from '../../state/paintPreview';
 
 const SAVE_DEBOUNCE_MS = 700;
 
-/** Disposes replaced Skia objects a little later, once no frame can still use them. */
-function laterDispose(obj: { dispose(): void } | null | undefined) {
-  if (obj) setTimeout(() => obj.dispose(), 1500);
-}
 
 interface Outputs {
   paint: SharedValue<SkImage | null>;
@@ -62,12 +59,12 @@ function createStudioSession(vehicle: VehicleDefinition, out: Outputs, events: S
       paintImage(img) {
         const prev = out.paint.value;
         out.paint.value = img;
-        laterDispose(prev);
+        disposeLater(prev);
       },
       liveStroke(pic) {
         const prev = out.live.value;
         out.live.value = pic;
-        laterDispose(prev);
+        disposeLater(prev);
       },
       transform(t) {
         out.transform.value = t;

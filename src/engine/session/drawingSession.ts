@@ -78,6 +78,8 @@ export class DrawingSession implements GestureSink {
 
   private live: Stroke | null = null;
   private liveDirty = false;
+  /** Set by dispose(): the paint surfaces are gone, so late calls do nothing. */
+  private disposed = false;
   private seq = 0;
   private baseDirty = false;
   private baseCleared = false;
@@ -176,6 +178,7 @@ export class DrawingSession implements GestureSink {
   // ── GestureSink ─────────────────────────────────────────────────────────
 
   beginStroke(p: TouchPoint): boolean {
+    if (this.disposed) return false;
     if (!this.editable) {
       this.listener.strokeRejected?.('locked');
       return false;
@@ -248,7 +251,8 @@ export class DrawingSession implements GestureSink {
     this.liveDirty = true;
     this.schedule(() => {
       this.liveDirty = false;
-      this.renderLive();
+      // A frame scheduled before the studio closed may run after dispose().
+      if (!this.disposed) this.renderLive();
     });
   }
 
@@ -264,7 +268,7 @@ export class DrawingSession implements GestureSink {
   private commitLive() {
     const live = this.live;
     this.live = null;
-    if (!live) return;
+    if (!live || this.disposed) return;
     this.raster.commit([live]);
     const overflow = this.history.push(live);
     if (overflow.length) {
@@ -299,14 +303,14 @@ export class DrawingSession implements GestureSink {
   }
 
   undo() {
-    if (!this.editable || this.live || !this.history.undo()) return;
+    if (this.disposed || !this.editable || this.live || !this.history.undo()) return;
     this.raster.rebuild(this.history.strokes);
     this.publishRaster();
     this.listener.changed();
   }
 
   redo() {
-    if (!this.editable || this.live) return;
+    if (this.disposed || !this.editable || this.live) return;
     const s = this.history.redo();
     if (!s) return;
     this.raster.commit([s]);
@@ -316,7 +320,7 @@ export class DrawingSession implements GestureSink {
 
   /** Washes all paint off the car. */
   clear() {
-    if (!this.editable) return;
+    if (this.disposed || !this.editable) return;
     this.live = null;
     this.history.clear();
     this.raster.clearAll();
@@ -330,11 +334,17 @@ export class DrawingSession implements GestureSink {
   // ── Persistence & export ────────────────────────────────────────────────
 
   restore(saved: SavedDrawing, basePng: Uint8Array | null) {
+    if (this.disposed) return;
     this.live = null;
     this.raster.clearAll();
     if (basePng) {
-      const img = Skia.Image.MakeImageFromEncoded(Skia.Data.fromBytes(basePng));
-      if (img) this.raster.loadBase(img);
+      const data = Skia.Data.fromBytes(basePng);
+      const img = Skia.Image.MakeImageFromEncoded(data);
+      data.dispose();
+      if (img) {
+        this.raster.loadBase(img); // copied into the base surface
+        img.dispose();
+      }
     }
     const overflow = this.history.restore(saved.strokes, saved.redo);
     if (overflow.length) {
@@ -372,6 +382,8 @@ export class DrawingSession implements GestureSink {
 
   /** Releases the paint surfaces. Call when the studio closes. */
   dispose() {
+    if (this.disposed) return;
+    this.disposed = true;
     this.live = null;
     this.raster.dispose();
   }

@@ -6,5 +6,9 @@ export function recordPicture(bounds: Rect, draw: (canvas: SkCanvas) => void): S
   const recorder = Skia.PictureRecorder();
   const canvas = recorder.beginRecording(Skia.XYWHRect(bounds.x, bounds.y, bounds.width, bounds.height));
   draw(canvas);
-  return recorder.finishRecordingAsPicture();
+  const picture = recorder.finishRecordingAsPicture();
+  // The picture owns its recorded commands; the recorder is done (on the web it
+  // would otherwise stay allocated, once per live frame).
+  recorder.dispose();
+  return picture;
 }

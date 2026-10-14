@@ -8,6 +8,7 @@
 import { useEffect, useSyncExternalStore } from 'react';
 import { Skia, type SkImage } from '@shopify/react-native-skia';
 import { blobStore } from '../engine/persistence/blobStore';
+import { disposeLater } from '../engine/render/disposeLater';
 import { hasSavedPaint, loadThumbnail, saveThumbnail, type DrawingKey } from '../engine/persistence/drawingStore';
 
 export interface PaintPreview {
@@ -24,13 +25,19 @@ const listeners = new Set<() => void>();
 const id = (k: DrawingKey) => `${k.vehicleId}@${k.assetVersion}`;
 
 function set(k: DrawingKey, v: PaintPreview) {
+  const prev = cache.get(id(k));
   cache.set(id(k), v);
   listeners.forEach((l) => l());
+  // Every save replaces the preview; free the old image once the garage has moved on.
+  if (prev?.image && prev.image !== v.image) disposeLater(prev.image);
 }
 
 function decode(bytes: Uint8Array | null): SkImage | null {
   if (!bytes) return null;
-  return Skia.Image.MakeImageFromEncoded(Skia.Data.fromBytes(bytes));
+  const data = Skia.Data.fromBytes(bytes);
+  const image = Skia.Image.MakeImageFromEncoded(data);
+  data.dispose(); // the image keeps what it needs
+  return image;
 }
 
 export async function savePaintPreview(k: DrawingKey, png: Uint8Array, hasPaint: boolean) {

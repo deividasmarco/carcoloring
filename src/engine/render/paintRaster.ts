@@ -103,13 +103,10 @@ export class PaintRaster {
   loadBase(image: SkImage) {
     const canvas = this.base.getCanvas();
     canvas.clear(Skia.Color('transparent'));
-    canvas.drawImageRect(
-      image,
-      Skia.XYWHRect(0, 0, image.width(), image.height()),
-      Skia.XYWHRect(0, 0, this.width, this.height),
-      Skia.Paint(),
-    );
+    const paint = Skia.Paint();
+    canvas.drawImageRect(image, Skia.XYWHRect(0, 0, image.width(), image.height()), Skia.XYWHRect(0, 0, this.width, this.height), paint);
     this.base.flush();
+    paint.dispose();
     this.baseHasContent = true;
   }
 
@@ -134,8 +131,10 @@ export class PaintRaster {
     const img = this.current.makeImageSnapshot();
     const canvas = surface.getCanvas();
     canvas.clear(Skia.Color('transparent'));
-    canvas.drawImageRect(img, Skia.XYWHRect(0, 0, this.width, this.height), Skia.XYWHRect(0, 0, w, h), Skia.Paint());
+    const paint = Skia.Paint();
+    canvas.drawImageRect(img, Skia.XYWHRect(0, 0, this.width, this.height), Skia.XYWHRect(0, 0, w, h), paint);
     surface.flush();
+    paint.dispose();
     const out = surface.makeImageSnapshot();
     const bytes = out.encodeToBytes(ImageFormat.PNG, 100);
     out.dispose();

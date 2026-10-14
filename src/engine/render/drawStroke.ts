@@ -23,6 +23,7 @@ import {
   StrokeCap,
   StrokeJoin,
   type SkCanvas,
+  type SkMaskFilter,
   type SkPath,
 } from '@shopify/react-native-skia';
 import type { BrushTextures } from './brushTextures';
@@ -31,6 +32,23 @@ import { TOOLS, widthAt, type Stroke, type StrokePoint } from '../stroke/types';
 
 /** Max spacing between interpolated samples, artwork units. */
 const SPACING = 2.5;
+
+/**
+ * Soft-edge blur filters, one per tool softness, created once and kept for the
+ * app's lifetime (like the brush textures). They are immutable and shared by
+ * every stroke, so nothing is created or released per stroke: native mask
+ * filters have no dispose() (they are freed by garbage collection), and on the
+ * web nothing is garbage collected, so one per stroke would leak.
+ */
+const blurs = new Map<number, SkMaskFilter>();
+function blurFor(softness: number): SkMaskFilter {
+  let f = blurs.get(softness);
+  if (!f) {
+    f = Skia.MaskFilter.MakeBlur(BlurStyle.Normal, softness, true);
+    blurs.set(softness, f);
+  }
+  return f;
+}
 
 export function strokeGeometry(stroke: Pick<Stroke, 'points' | 'tool' | 'size'>) {
   const tool = TOOLS[stroke.tool];
@@ -69,8 +87,7 @@ export function drawStroke(canvas: SkCanvas, stroke: Stroke, clip: SkPath, textu
   ink.setStrokeCap(StrokeCap.Round);
   ink.setStrokeJoin(StrokeJoin.Round);
   ink.setColor(Skia.Color(tool.id === 'eraser' ? '#000000' : stroke.color));
-  const blur = tool.softness > 0 ? Skia.MaskFilter.MakeBlur(BlurStyle.Normal, tool.softness, true) : null;
-  if (blur) ink.setMaskFilter(blur);
+  if (tool.softness > 0) ink.setMaskFilter(blurFor(tool.softness));
 
   if (pts.length === 1) {
     const dot = ink.copy();
@@ -106,8 +123,10 @@ export function drawStroke(canvas: SkCanvas, stroke: Stroke, clip: SkPath, textu
 
   canvas.restore();
   canvas.restore();
-  // Skia copied what it needs; web Skia objects are never garbage collected.
+  // The canvas (or picture being recorded) keeps its own copies of paints
+  // and paths, so the per-stroke objects can go now. Only types whose native
+  // host objects export dispose() are released here (Paint, Path,
+  // PathBuilder); the shared blur filters and brush shaders are never released.
   ink.dispose();
-  blur?.dispose();
   layer.dispose();
 }
