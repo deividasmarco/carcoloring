@@ -34,7 +34,11 @@ You need the Account Holder role for step 1.
 6. **In-App Purchase key** (for RevenueCat). Users and Access → Integrations → In-App Purchase → generate a key. Download the `.p8` file once, and note the **Key ID** and the **Issuer ID**.
 7. **Server notifications.** Your app → App Information → App Store Server Notifications: paste the URL RevenueCat shows (step 2.2) as both the **Production** and the **Sandbox** server URL, Version 2. Expiry, renewal, refund and revocation then reach RevenueCat right away.
 8. **Sandbox testers.** Users and Access → Sandbox → Test Accounts → +, with a new email address that isn't an Apple Account. On the test iPhone: Settings → Developer → Sandbox Apple Account → sign in. Developer mode must be on, which a development build install turns on.
-9. **App Privacy.** Answer the questionnaire for what RevenueCat processes: purchase history and an anonymous app-user id, for App Functionality, not linked to identity, and not used for tracking. Check RevenueCat's current "Apple App Privacy" guide when you fill it in. A privacy policy URL is required.
+9. **App Privacy.** Answer the questionnaire for what RevenueCat processes. Following RevenueCat's "Apple App Privacy" guide (check it again when you fill this in):
+   - **Purchases → Purchase History:** collected, for **App Functionality** and **Analytics** (RevenueCat says every app using it selects both), **not linked** to the user (the app uses RevenueCat's anonymous app-user id and never sets a custom one), **not used for tracking**.
+   - **Identifiers:** none. The app sets no custom app-user id, turns off `automaticDeviceIdentifierCollectionEnabled` and diagnostics, and blocks the advertising id on Android.
+   - Nothing else: no contact info, usage data, location or diagnostics.
+   - **Privacy policy URL:** the page in `docs/privacy/index.html`, published with GitHub Pages (see "Before release"). It describes exactly this; update it if the app starts handling other data.
 
 ## 2. RevenueCat
 
@@ -103,6 +107,7 @@ Check the Google Play Families policy for apps aimed at children.
 
 ## Before release
 
+- The privacy policy is `docs/privacy/index.html`, served by GitHub Pages (repository Settings → Pages → Deploy from a branch → `master`, folder `/docs`; `docs/.nojekyll` serves the files as they are) at https://deividasmarco.github.io/carcoloring/privacy/. Change its date when you change it.
 - Set `extra.legal.privacyPolicyUrl` and `extra.legal.termsOfUseUrl` in `app.json` (public https pages you control). On iOS the terms link falls back to Apple's standard licence agreement. Customers never see configuration messages: a missing link is simply not shown, and development builds list it in a "development only" box in the parent area.
 - Run `npm run check:release`. It fails until the legal URLs and the public RevenueCat keys for each platform are set (a secret `sk_…` key or a key with the wrong prefix also fails it). EAS runs the same check before every **production** build (the `eas-build-pre-install` script in `package.json`), so a store build can't be made without them.
 - Do the artwork rights review (see `ASSET_MANIFEST.md`).
