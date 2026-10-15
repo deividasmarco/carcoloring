@@ -208,6 +208,7 @@ Every edit is recorded in the vehicle's `trace.ts`, and every part map and lasso
 - **Buttons:** large previous/next buttons do the same, and are disabled at the ends. Quick repeated taps add up.
 - **Kept in sync:** the name, BAY number, `04 / 27` counter, lock badge and action button all come from the same `GARAGE` entry and the same position. They fade out before the next fades in. The selection is a permanent vehicle id; positions from the gesture code are checked against the registry (`carouselFlow.ts`).
 - **Names in full:** every name is sized from Michroma's real glyph widths to the room it has, two balanced lines for the longest on narrow screens, never truncated.
+- **Coming back to the garage:** a vehicle chosen in All cars or My Creations is applied when the garage is in front again, and both garage canvases are redrawn then and after the return transition. On iOS a canvas otherwise kept the previous car on screen when its picture changed while the garage was covered (the name had already changed). A swipe that starts on the vehicle name also moves the carousel.
 - **Finding a vehicle:** the counter is the **All cars** button (a grid of every vehicle with All / Free / Bikes filters); **My Creations** sits below the paint button in portrait and in the top bar in landscape.
 - **Actions:**
   - START PAINTING or KEEP PAINTING for a free or unlocked vehicle (Keep painting opens its most recently edited picture; other versions are in My Creations);

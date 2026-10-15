@@ -27,9 +27,9 @@
  *   can unlock it in the parent area, or "Look at it" when the child already
  *   painted it (view-only).
  */
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useNavigation, useRouter } from 'expo-router';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   runOnJS,
@@ -42,7 +42,7 @@ import Animated, {
   type SharedValue,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Canvas, Group, Image, LinearGradient, Oval, Picture, Rect, vec, type SkPicture } from '@shopify/react-native-skia';
+import { Canvas, Group, Image, LinearGradient, Oval, Picture, Rect, useCanvasRef, vec, type SkPicture } from '@shopify/react-native-skia';
 import { GARAGE, garageIndexOf, type GarageEntry } from '../../content/registry';
 import { drawGarageBackground, drawTurntable } from '../../content/scenes/neon-garage/background';
 import { GarageAmbience } from '../../content/scenes/neon-garage/effects';
@@ -51,7 +51,7 @@ import { recordPicture } from '../../engine/render/picture';
 import { installGarageProbe } from '../../dev/webProbe';
 import { getVehicleRuntime } from '../../engine/vehicle/vehicleRuntime';
 import { keyOfCreation, latestCreation, useCreations, useLatestCreation, type CreationMeta } from '../../state/creations';
-import { onGarageSelectionRequest, takeGarageSelection } from '../../state/garageSelection';
+import { takeGarageSelection } from '../../state/garageSelection';
 import { preloadPaintPreview, usePaintPreview } from '../../state/paintPreview';
 import { accessOf, canPaint, premiumStore, usePremium } from '../../state/premium';
 import { setSettings, useReduceMotion, useSettings, useSettingsReady } from '../../state/settings';
@@ -469,7 +469,7 @@ export function GarageScreen() {
   }, [range]);
 
   // Development-only probe for browser checks.
-  const probeState = useRef({ selected, mounted: [] as string[], stage: { slideW: 0, top: 0, ground: 0 }, view: { scale: 1, tx: 0, ty: 0 } as View2D });
+  const probeState = useRef({ selected, mounted: [] as string[], stage: { slideW: 0, top: 0, ground: 0 }, view: { scale: 1, tx: 0, ty: 0 } as View2D, redraws: 0 });
   useEffect(() => {
     Object.assign(probeState.current, { selected, mounted: indices.map((i) => GARAGE[i].vehicle.id) });
   }, [selected, indices]);
@@ -491,19 +491,42 @@ export function GarageScreen() {
         return { x, y, width: b.width * p.scale * view.scale, height: b.height * p.scale * view.scale };
       },
       vehicleIds: GARAGE.map((e) => e.vehicle.id),
+      redraws: () => probeState.current.redraws,
     });
     return () => installGarageProbe(null);
   }, [position, drag]);
 
-  // A vehicle picked in All cars or My Creations.
-  useEffect(() => {
-    const apply = () => {
+  // The garage stays mounted under other screens (All cars, My Creations,
+  // the studio). On iOS a Skia canvas draws a new picture once, when it
+  // changes; a picture that changes while the garage is covered is drawn
+  // while its layer is out of the window, never reaches the screen, and the
+  // previous frame stays until something animates. So a vehicle picked
+  // elsewhere is applied when the garage is in front again, and both canvases
+  // are redrawn when it is focused and once its return transition has ended.
+  const carsCanvas = useCanvasRef();
+  const sceneCanvas = useCanvasRef();
+  const redrawCanvases = useCallback(() => {
+    carsCanvas.current?.redraw();
+    sceneCanvas.current?.redraw();
+    probeState.current.redraws++;
+  }, [carsCanvas, sceneCanvas]);
+  useFocusEffect(
+    useCallback(() => {
       const id = takeGarageSelection();
       if (id && flow.select(id)) setSettings({ lastVehicle: id });
-    };
-    apply();
-    return onGarageSelectionRequest(apply);
-  }, [flow]);
+      redrawCanvases();
+    }, [flow, redrawCanvases]),
+  );
+  const navigation = useNavigation() as unknown as {
+    addListener(type: 'transitionEnd', listener: (e: { data?: { closing?: boolean } }) => void): () => void;
+  };
+  useEffect(
+    () =>
+      navigation.addListener('transitionEnd', (e) => {
+        if (!e.data?.closing) redrawCanvases();
+      }),
+    [navigation, redrawCanvases],
+  );
 
   // Preload previews around the selection; warm the remaining cars when idle.
   const creations = useCreations();
@@ -609,7 +632,8 @@ export function GarageScreen() {
   // Landscape puts the counter top-right, so the name has the room beside the button.
   const plateW = landscape ? Math.min(420, width - insets.left - insets.right - 44 - 250 - 24) : width - 40;
   const nameplate = (
-    <View style={[styles.plate, landscape ? { width: plateW } : styles.platePortrait]}>
+    // Display only: a swipe that starts on the name still moves the carousel.
+    <View style={[styles.plate, landscape ? { width: plateW } : styles.platePortrait]} pointerEvents="none">
       {indices.map((i) => {
         const v = GARAGE[i].vehicle;
         return (
@@ -692,7 +716,7 @@ export function GarageScreen() {
     <View style={styles.root}>
       <GestureDetector gesture={pan}>
         <View style={StyleSheet.absoluteFill} collapsable={false} testID="garage-carousel">
-          <Canvas style={StyleSheet.absoluteFill} pointerEvents="none">
+          <Canvas ref={sceneCanvas} style={StyleSheet.absoluteFill} pointerEvents="none">
             <Group transform={bgTransform}>
               <Picture picture={garageBackground()} />
               <GarageAmbience animate={animate} underglow={false} />
@@ -703,7 +727,7 @@ export function GarageScreen() {
             </Rect>
           </Canvas>
           {/* The cars' canvas is the clipped viewport: nothing draws outside it. */}
-          <Canvas style={StyleSheet.absoluteFill} pointerEvents="none" testID="garage-cars">
+          <Canvas ref={carsCanvas} style={StyleSheet.absoluteFill} pointerEvents="none" testID="garage-cars">
             {indices.map((i) => (
               <CarSlide key={GARAGE[i].vehicle.id} entry={GARAGE[i]} index={i} position={position} frame={layout.frame} reduce={reduce} />
             ))}

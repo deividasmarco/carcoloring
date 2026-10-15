@@ -61,6 +61,8 @@ export function installGarageProbe(
     /** The selected vehicle's outline at rest, on screen (dp). */
     carRect: () => { x: number; y: number; width: number; height: number };
     vehicleIds: string[];
+    /** How often the garage asked its canvases to redraw (focus and return transitions). */
+    redraws: () => number;
   } | null,
 ) {
   if (!__DEV__ || Platform.OS !== 'web') return;

@@ -4,7 +4,7 @@
  *   node e2e/web-creations.e2e.mjs [baseUrl] [screenshotDir]
  */
 import { mkdirSync } from 'fs';
-import { garageKit, indexOf, launchBrowser, reporter, studioKit, testStore, trackErrors, VEHICLES, waitForEntitled } from './lib.mjs';
+import { garageKit, indexOf, isFree, launchBrowser, reporter, shotDiff, studioKit, testStore, trackErrors, VEHICLES, waitForEntitled } from './lib.mjs';
 
 const BASE = process.argv[2] ?? 'http://localhost:8081';
 const SHOTS = process.argv[3] ?? '.scratch/e2e-creations';
@@ -69,6 +69,79 @@ const cards = (page) => page.locator('[data-testid^="creation-"]');
   check('the Free filter leads back to a free vehicle, ready to paint', (await G.garage()).sel === 2);
   await G.expectShown(2, 'free vehicle from All cars', { button: 'start' });
   check('All cars: no page errors', errors.length === 0, errors.slice(0, 2).join(' | '));
+  await ctx.close();
+}
+
+// ── A2. Choosing in All cars shows that vehicle's picture, not the previous one ──
+// (Regression: the name and counter changed but the old car stayed on screen.)
+{
+  const { ctx, page, errors, G, S } = await fresh();
+  const ref = {};
+  const ids = ['apex-gt', 'blaze-gt', 'storm-sedan', 'zenith-gt', 'volt-sedan', 'comet-superbike', 'arrow-superbike', 'turbo-wagon', 'pulse-hatch'];
+  for (const id of ids) {
+    await G.goTo(indexOf(id));
+    await page.waitForTimeout(400);
+    ref[id] = await G.carsOnly();
+  }
+  const nameOf = (id) => VEHICLES[indexOf(id)][1];
+  const redraws = () => page.evaluate(() => globalThis.__neonBayGarage.redraws());
+  async function pick(id) {
+    await page.getByLabel(/^All cars\. /).click();
+    await page.waitForURL(/\/vehicles$/);
+    await page.getByLabel(new RegExp(`^${nameOf(id)}(,|$)`)).click();
+    await page.waitForFunction(() => !location.pathname.includes('vehicles') && !!globalThis.__neonBayGarage, null, { timeout: 30000 });
+  }
+  async function expectPicture(id, label) {
+    await page.waitForTimeout(500);
+    const i = indexOf(id);
+    const d = shotDiff(await G.carsOnly(), ref[id]);
+    check(`${label}: the picture is the ${nameOf(id)}`, d < 0.004, `${(d * 100).toFixed(2)}% of pixels differ`);
+    await G.expectShown(i, label, { button: isFree(id) ? ['start', 'keep'] : 'locked' });
+  }
+  for (const [from, to] of [
+    ['volt-sedan', 'zenith-gt'],
+    ['volt-sedan', 'storm-sedan'],
+    ['apex-gt', 'arrow-superbike'],
+    ['arrow-superbike', 'apex-gt'],
+    ['pulse-hatch', 'comet-superbike'],
+    ['storm-sedan', 'blaze-gt'],
+    ['zenith-gt', 'volt-sedan'],
+  ]) {
+    await G.goTo(indexOf(from));
+    await page.waitForTimeout(300);
+    const before = await redraws();
+    await pick(to);
+    await expectPicture(to, `All cars, ${nameOf(from)} → ${nameOf(to)}`);
+    check(`All cars, ${nameOf(from)} → ${nameOf(to)}: the garage redrew its canvases on return`, (await redraws()) > before);
+  }
+  // Several picks in a row, as fast as the screens allow.
+  for (const id of ['turbo-wagon', 'apex-gt', 'comet-superbike', 'storm-sedan']) await pick(id);
+  await expectPicture('storm-sedan', 'four quick picks in a row');
+  // Mixed with arrows and swipes.
+  await pick('zenith-gt');
+  await page.getByLabel('Next car').click();
+  await G.settle(indexOf('zenith-gt') + 1, Date.now());
+  await page.waitForTimeout(400);
+  await G.swipe(320);
+  await G.settle(indexOf('zenith-gt'), Date.now());
+  await expectPicture('zenith-gt', 'All cars, then an arrow, then a swipe back');
+  await pick('volt-sedan');
+  await G.swipe(-320);
+  await G.settle(indexOf('volt-sedan') + 1, Date.now());
+  await G.swipe(320);
+  await G.settle(indexOf('volt-sedan'), Date.now());
+  await expectPicture('volt-sedan', 'All cars, then swipes both ways');
+  // Paint opens the vehicle that is shown.
+  for (const id of ['storm-sedan', 'blaze-gt']) {
+    await pick(id);
+    await expectPicture(id, `before painting the ${nameOf(id)}`);
+    await page.getByLabel(new RegExp(`^(Start|Keep) painting the ${nameOf(id)}$`)).click();
+    await S.waitForStudio(id);
+    check(`All cars → ${nameOf(id)} → Paint opens the ${nameOf(id)}`, (await S.nb(() => globalThis.__neonBay.vehicleId)) === id);
+    await G.backToGarage();
+    await expectPicture(id, `back from painting the ${nameOf(id)}`);
+  }
+  check('All cars selection: no page errors', errors.length === 0, errors.slice(0, 2).join(' | '));
   await ctx.close();
 }
 
